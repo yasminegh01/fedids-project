@@ -1,0 +1,1 @@
+A Port Scan is a reconnaissance technique used by attackers to discover open ports on a target device. It often precedes a more direct attack. If a Port Scan is detected from an IP, it should be considered hostile. The recommended action is to immediately and permanently block the source IP address in the network firewall. This prevents any follow-up attack from that source.

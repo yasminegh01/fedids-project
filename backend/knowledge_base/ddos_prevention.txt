@@ -1,0 +1,4 @@
+To prevent a DDoS attack, the primary steps are:
+1. Rate Limiting: Configure the IIoT gateway to limit the number of requests per second from a single IP address.
+2. Blacklisting: Add the malicious source IP address to the firewall's blocklist.
+3. Traffic Filtering: Analyze the attack packets to identify a unique signature, then create a rule to drop all packets matching that signature.

@@ -1,0 +1,35 @@
+# --- Fichiers et Dossiers Généraux ---
+.DS_Store
+*.log
+*.tmp
+*.swp
+
+# --- Secrets et Fichiers d'Environnement (TRÈS IMPORTANT) ---
+# Ne jamais sauvegarder vos clés API sur GitHub !
+.env
+.env.*
+config.ini 
+
+# --- Python / Backend ---
+# Dossier de l'environnement virtuel
+venv/
+__pycache__/
+*.pyc
+# Fichiers de base de données SQLite
+*.db
+*.db-journal*
+
+# --- Node.js / Frontend ---
+# Dossier des dépendances (peut être réinstallé avec `npm install`)
+node_modules/
+# Fichiers de build de production
+dist/
+# Fichiers de log de npm
+npm-debug.log*
+yarn-error.log*
+# Fichiers de cache Vite
+.vite/
+
+# --- Fichiers de l'IDE (ex: VSCode) ---
+.vscode/
+.idea/
