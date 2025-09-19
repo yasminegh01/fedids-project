@@ -9,29 +9,34 @@ import PublicRoute from './components/PublicRoute';
 
 // Importer les Layouts
 import UserDashboardLayout from './layouts/UserDashboardLayout';
-import AdminDashboardLayout from './layouts/AdminDashboardLayout'; // Assurez-vous que ce fichier existe
+import AdminDashboardLayout from './layouts/AdminDashboardLayout';
 
 // Importer TOUTES les pages
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
-import AuthCallbackPage from './pages/AuthCallbackPage'; // <-- NOUVEL IMPORT
+import AuthCallbackPage from './pages/AuthCallbackPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+
+// Pages Utilisateur
 import UserDashboard from './pages/User_Dashboard';
 import UserDevices from './pages/User_Devices';
 import UserProfile from './pages/User_Profile';
 import UserUpgradePage from './pages/User_UpgradePage'; 
 
+// === IMPORTS ADMIN MANQUANTS ===
+import AdminDashboardView from './pages/Admin_DashboardView';
+import AdminClientManagement from './pages/Admin_ClientManagement';
+import AdminAttackHistory from './pages/Admin_AttackHistory';
 
 export default function App() {
   return (
     <Routes>
       {/* --- Routes Publiques --- */}
-      {/* La racine '/' affiche maintenant la page d'accueil */}
       <Route path="/" element={<PublicRoute><HomePage /></PublicRoute>} />
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/signup" element={<PublicRoute><SignUpPage /></PublicRoute>} />
-      
-      {/* La route de callback pour Google est maintenant définie */}
+      <Route path="/verify-email" element={<PublicRoute><VerifyEmailPage /></PublicRoute>} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       
       {/* --- Routes Protégées Utilisateur --- */}
@@ -40,18 +45,19 @@ export default function App() {
         <Route path="overview" element={<UserDashboard />} />
         <Route path="devices" element={<UserDevices />} />
         <Route path="profile" element={<UserProfile />} />
-               <Route path="upgrade" element={<UserUpgradePage />} />
-
+        <Route path="upgrade" element={<UserUpgradePage />} />
       </Route>
       
-      {/* --- Routes Protégées Admin --- */}
+       {/* --- Routes Protégées Admin --- */}
       <Route 
         path="/admin" 
         element={<ProtectedRoute requiredRole="admin"><AdminDashboardLayout /></ProtectedRoute>}
       >
         <Route index element={<Navigate to="overview" replace />} />
-        {/* <Route path="overview" element={<AdminDashboardView />} /> */}
-        {/* <Route path="clients" element={<AdminClientManagement />} /> */}
+        {/* Le chemin "overview" correspond bien au lien "/admin/overview" */}
+        <Route path="overview" element={<AdminDashboardView />} />
+        <Route path="clients" element={<AdminClientManagement />} />
+        <Route path="attacks" element={<AdminAttackHistory />} />
       </Route>
       
       {/* --- Page 404 --- */}

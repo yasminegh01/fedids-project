@@ -61,7 +61,7 @@ export default function DashboardView() {
   // Hook `useEffect` pour gérer les connexions (API et WebSockets)
   useEffect(() => {
     // 1. Récupérer les statistiques initiales au chargement
-    apiClient.get('/api/admin/dashboard_stats')
+    apiClient.get('/api/admin/dashboard')
       .then(res => setStats(res.data))
       .catch(err => console.error("Failed to fetch dashboard stats:", err));
 

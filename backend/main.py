@@ -178,7 +178,19 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+class AdminStats(BaseModel):
+    total_users: int
+    premium_users: int
+    total_devices: int
+    online_devices: int
+    total_attacks_24h: int
 
+class FLRoundHistory(BaseModel):
+    server_round: int
+    accuracy: float
+    loss: float
+    timestamp: datetime
+    class Config: from_attributes = True
 class UserPublic(BaseModel):
     id: int
     email: str
@@ -192,7 +204,9 @@ class UserPublic(BaseModel):
     class Config:
         from_attributes = True
 
-
+class UserAdminView(UserPublic):
+    device_count: int
+    is_active: bool
 class UserProfileUpdate(BaseModel):
     username: Optional[str] = None
     full_name: Optional[str] = None
@@ -408,9 +422,9 @@ async def lifespan(app: FastAPI):
             db.add(admin)
             db.commit()
     yield
-
-
 app = FastAPI(title="FedIds API", lifespan=lifespan)
+
+
 
 # ===============================================================
 # SECTION 8 : MIDDLEWARES & FICHIERS STATIQUES
@@ -787,6 +801,41 @@ def save_client_history(
     db.commit()
     print(f"Saved history for {len(history_payload)} clients.")
     return {"status": "history saved"}
+
+
+@app.get("/api/admin/stats", response_model=AdminStats, dependencies=[Depends(get_current_admin_user)])
+def get_admin_stats(db: Session = Depends(get_db)):
+    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+    stats = AdminStats(
+        total_users=db.query(User).count(),
+        premium_users=db.query(User).filter(User.role == 'premium').count(),
+        total_devices=db.query(Device).count(),
+        online_devices=db.query(DeviceStatus).filter(DeviceStatus.status == 'online').count(),
+        total_attacks_24h=db.query(AttackLog).filter(AttackLog.timestamp >= twenty_four_hours_ago).count()
+    )
+    return stats
+
+
+# Endpoint pour lister tous les utilisateurs
+@app.get("/api/admin/users", response_model=List[UserAdminView], dependencies=[Depends(get_current_admin_user)])
+def get_all_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    # On enrichit les données avec le nombre d'appareils
+    response = []
+    for user in users:
+        user_data = UserAdminView(
+            **user.__dict__,
+            device_count=len(user.devices)
+        )
+        response.append(user_data)
+    return response
+
+@app.get("/api/admin/fl-history", response_model=List[FLRoundHistory], dependencies=[Depends(get_current_admin_user)])
+def get_fl_history(db: Session = Depends(get_db)):
+    # Récupérer l'historique agrégé de tous les clients, groupé par round
+    # (Ceci est une simplification, une vraie requête nécessiterait un GROUP BY et AVG)
+    history = db.query(ClientHistory).order_by(ClientHistory.server_round.desc()).limit(100).all()
+    return history
 # ------------------ FLOWER ------------------
 @app.post("/api/fl/register")
 def fl_register(payload: FLClientRegistration, db: Session = Depends(get_db)):
