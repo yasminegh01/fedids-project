@@ -1,24 +1,15 @@
 /** @type {import('tailwindcss').Config} */
-
+// frontend/tailwind.config.js
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  darkMode: 'class', // Activer le mode sombre basé sur une classe CSS
+  content: ["./src/**/*.{js,jsx}"],
   theme: {
     extend: {
-      // === AJOUTEZ CE BLOC DE COULEURS ===
       colors: {
-        'primary': '#0A192F',      // Bleu Nuit
-        'secondary': '#8892B0',    // Bleu Acier
-        'accent': {
-          DEFAULT: '#e4d4a3ff',    // Ambre Vif
-          'hover': '#FFD700'     // Une version légèrement plus claire pour le survol
-        },
-        'main-text': '#CCD6F6',   // Texte principal
-        'light-bg': '#F0F2F5',    // Fond clair pour le contenu principal
+        'admin-primary': '#1E293B', // Bleu-gris très sombre
+        'admin-secondary': '#334155',
+        'admin-accent': '#4F46E5', // Indigo vif
       },
-      // === FIN DU BLOC ===
     },
   },
   plugins: [],

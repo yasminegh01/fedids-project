@@ -23,11 +23,19 @@ import UserDashboard from './pages/User_Dashboard';
 import UserDevices from './pages/User_Devices';
 import UserProfile from './pages/User_Profile';
 import UserUpgradePage from './pages/User_UpgradePage'; 
-
+import ForgotPasswordPage from './pages/ForgotPasswordPage'; // <-- NOUVEL IMPORT
+import ResetPasswordPage from './pages/ResetPasswordPage';   // <-- NOUVEL IMPORT
 // === IMPORTS ADMIN MANQUANTS ===
 import AdminDashboardView from './pages/Admin_DashboardView';
 import AdminClientManagement from './pages/Admin_ClientManagement';
 import AdminAttackHistory from './pages/Admin_AttackHistory';
+import AdminUserManagement from './pages/Admin_UserManagement'; 
+import AdminUserDetails from './pages/Admin_UserDetails'; // N'oubliez pas l'import
+import AdminModelAnalysis from './pages/Admin_ModelAnalysis';
+import AdminModelPerformance from './pages/Admin_ModelPerformance'; // N'oubliez pas l'import
+import AdminFLMonitoring from './pages/Admin_FL_Monitoring'; // <-- NOUVEL IMPORT
+import UserSupportPage from './pages/User_SupportPage';
+import AdminTicketsPage from './pages/Admin_TicketsPage';
 
 export default function App() {
   return (
@@ -38,6 +46,9 @@ export default function App() {
       <Route path="/signup" element={<PublicRoute><SignUpPage /></PublicRoute>} />
       <Route path="/verify-email" element={<PublicRoute><VerifyEmailPage /></PublicRoute>} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
+      
       
       {/* --- Routes Protégées Utilisateur --- */}
       <Route path="/dashboard" element={<ProtectedRoute><UserDashboardLayout /></ProtectedRoute>}>
@@ -46,6 +57,8 @@ export default function App() {
         <Route path="devices" element={<UserDevices />} />
         <Route path="profile" element={<UserProfile />} />
         <Route path="upgrade" element={<UserUpgradePage />} />
+                <Route path="support" element={<UserSupportPage />} />
+
       </Route>
       
        {/* --- Routes Protégées Admin --- */}
@@ -58,6 +71,15 @@ export default function App() {
         <Route path="overview" element={<AdminDashboardView />} />
         <Route path="clients" element={<AdminClientManagement />} />
         <Route path="attacks" element={<AdminAttackHistory />} />
+        <Route path="users" element={<AdminUserManagement />} />
+        <Route path="attacks" element={<AdminAttackHistory />} />
+        <Route path="users/:userId" element={<AdminUserDetails />} /> 
+        <Route path="analysis" element={<AdminModelAnalysis />} />
+        <Route path="performance" element={<AdminModelPerformance />} />
+    <Route path="federated-learning" element={<AdminFLMonitoring />} />
+        <Route path="tickets" element={<AdminTicketsPage />} />
+
+
       </Route>
       
       {/* --- Page 404 --- */}

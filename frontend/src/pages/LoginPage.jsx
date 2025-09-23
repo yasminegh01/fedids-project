@@ -1,9 +1,8 @@
-// frontend/src/pages/LoginPage.jsx
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import apiClient from '../api/apiClient'; // <<< CORRECT IMPORT
-
+import apiClient from '../api/apiClient';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'; 
 // --- API client configuré ---
 
 // --- Icône Google ---
@@ -17,36 +16,30 @@ const GoogleIcon = () => (
 );
 
 export default function LoginPage() {
-  const { login } = useAuth();
+    const { login } = useAuth();
+    const [username, setUsername] = useState('');
+    const [showPassword, setShowPassword] = useState(false); // Nouvel état
 
-  const [username, setUsername] = useState('yasmine'); // Pré-rempli pour tests rapides
-  const [password, setPassword] = useState('yasmine');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+    const [password, setPassword] = useState('');
+    const [errorMsg, setErrorMsg] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-  // --- Connexion classique ---
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMsg('');
-    const formData = new URLSearchParams({ username, password });
-
-    try {
-      const response = await apiClient.post('/api/auth/login', formData);
-      const { access_token, user } = response.data;
-
-      // Mise à jour via le contexte (AuthContext)
-      login(user, access_token);
-
-      // Redirection en fonction du rôle
-      window.location.href = user.role === 'admin' ? '/admin' : '/dashboard';
-    } catch (error) {
-      setErrorMsg(error.response?.data?.detail || 'Login failed. Please check credentials.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setErrorMsg('');
+        const formData = new URLSearchParams({ username, password });
+        try {
+            const response = await apiClient.post('/api/auth/login', formData);
+            login(response.data.user, response.data.access_token);
+            // La redirection est maintenant gérée par le AuthContext
+        } catch (error) {
+            setErrorMsg(error.response?.data?.detail || 'Login failed.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
   // --- Connexion via Google ---
   const handleGoogleLogin = () => {
     window.location.href = 'http://127.0.0.1:8000/api/auth/google';
@@ -78,15 +71,30 @@ export default function LoginPage() {
         {/* --- Password --- */}
         <div className="mb-6">
           <label className="block text-gray-700 mb-1 font-semibold">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            className="w-full p-2 border rounded-md"
-            required
-          />
+           <div className="relative">
+    <input
+        // === LA CORRECTION EST ICI ===
+        type={showPassword ? "text" : "password"}
+        
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        className="w-full p-2 border rounded-md pr-10" // On ajoute un padding à droite pour ne pas que le texte aille sous l'icône
+        required
+    />
+    <button 
+        type="button" 
+        onClick={() => setShowPassword(!showPassword)}
+        className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500"
+    >
+        {showPassword ? <EyeSlashIcon className="h-5 w-5"/> : <EyeIcon className="h-5 w-5"/>}
+    </button>
+</div>
         </div>
-
+<div className="flex justify-end mb-6">
+                    <Link to="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                        Forgot Password?
+                    </Link>
+                </div>
         {/* --- Bouton login --- */}
         <button
           type="submit"

@@ -9,6 +9,8 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 import time
 import os
+import argparse 
+from model_definition import create_model
 
 # --- Configuration ---
 # The URL of our FastAPI backend's API
@@ -38,9 +40,6 @@ def weighted_average(metrics: List[Tuple[int, Dict[str, Scalar]]]) -> Dict[str, 
 # --- Custom Flower Strategy ---
 
 class FedIdsStrategy(fl.server.strategy.FedAvg):
-    """
-    Custom strategy that sends updates to the FastAPI web backend after each round.
-    """
     def aggregate_evaluate(
         self,
         server_round: int,
@@ -48,83 +47,82 @@ class FedIdsStrategy(fl.server.strategy.FedAvg):
         failures: List[BaseException],
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
         
-        # Call the parent class method to perform the standard aggregation
         aggregated_loss, aggregated_metrics = super().aggregate_evaluate(server_round, results, failures)
         
-        if aggregated_loss is not None and aggregated_metrics is not None and "accuracy" in aggregated_metrics:
+        if aggregated_loss is not None and aggregated_metrics and "accuracy" in aggregated_metrics:
             accuracy = aggregated_metrics["accuracy"]
-            print(f"✅ Round {server_round} COMPLETE. Global Accuracy: {accuracy:.4f}, Loss: {aggregated_loss:.4f}")
+            print(f"✅ Round {server_round} COMPLETE. Global Accuracy: {accuracy:.4f}")
             
-            # --- PHASE 2 INTEGRATION: Send Global Status to Dashboard ---
+            # === BLOC DE COMMUNICATION AMÉLIORÉ ===
             try:
-                # This sends the live update that the frontend WebSocket is listening for
-                requests.post(f"{API_URL}/api/fl_update", json={"server_round": server_round, "accuracy": accuracy})
-                print("   -> Successfully notified dashboard of global status.")
+                # On envoie la mise à jour pour le graphique en temps réel
+                requests.post(f"{API_URL}/api/fl_update", json={"server_round": server_round, "accuracy": accuracy}, timeout=5)
+                print("   -> ✅ Successfully notified dashboard of global status.")
             except requests.exceptions.RequestException as e:
-                print(f"   🔥 API Error (Global Status): Failed to connect to backend. Is it running? Details: {e}")
+                print(f"   -> ❌ FAILED to notify dashboard. Is uvicorn running? Error: {e}")
 
-        # --- PHASE 2 INTEGRATION: Send Individual Client History ---
-        history_payload = [
-            {
-                "client_flower_id": client.cid,
-                "server_round": server_round,
-                "accuracy": res.metrics.get("accuracy", 0.0),
-                "loss": res.loss,
-            }
-            for client, res in results
-        ]
-        if history_payload:
-            try:
-                # This saves the round data to the database for the Client Management page
-                requests.post(f"{API_URL}/api/admin/client_history", json=history_payload)
-                print("   -> Successfully saved client history to database.")
-            except requests.exceptions.RequestException as e:
-                print(f"   🔥 API Error (Client History): Failed to save client history. Details: {e}")
+            # On envoie l'historique détaillé pour la base de données
+            history_payload = [{"client_flower_id": c.cid, "server_round": server_round, "accuracy": r.metrics.get("accuracy", 0.0), "loss": r.loss} for c, r in results]
+            if history_payload:
+                try:
+                    requests.post(f"{API_URL}/api/admin/client_history", json=history_payload, timeout=5)
+                    print("   -> ✅ Successfully saved client history to database.")
+                except requests.exceptions.RequestException as e:
+                    print(f"   -> ❌ FAILED to save client history. Error: {e}")
         
         return aggregated_loss, aggregated_metrics
 
     def aggregate_fit(self, server_round, results, failures):
-        """Aggregate model weights and save the new global model after each fit round."""
-        aggregated_parameters, _ = super().aggregate_fit(server_round, results, failures)
+        aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures)
 
         if aggregated_parameters is not None:
-            # Save the new global model to be used by the monitor and for the next round
-            print(f"💾 Saving updated global model for round {server_round}...")
+            print(f"💾 Saving updated global model weights for round {server_round}...")
             aggregated_ndarrays = fl.common.parameters_to_ndarrays(aggregated_parameters)
             
-            # Load a temporary model with the correct architecture to apply the new weights
-            temp_model = tf.keras.models.load_model("global_model.h5")
+            # === LA CORRECTION EST ICI ===
+            # On ne charge pas un .h5 complet, on crée l'architecture et on y met les poids
+            temp_model = create_model()
             temp_model.set_weights(aggregated_ndarrays)
-            temp_model.save("global_model.h5")
+            
+            # On sauvegarde uniquement les poids
+            temp_model.save_weights("global_model.weights.h5")
         
-        return aggregated_parameters, {}
+        return aggregated_parameters, aggregated_metrics
+
 
 
 # --- Main Execution Logic ---
 
+
 def main():
-    print("🚀 Starting Flower Server...")
+    parser = argparse.ArgumentParser(description="Flower Server for FedIds")
+    parser.add_argument("--num-clients", type=int, default=2, help="Minimum clients for training.")
+    args = parser.parse_args()
+    
+    print(f"🚀 Starting Flower Server... (waiting for {args.num_clients} clients)")
+    
     try:
-        model = tf.keras.models.load_model("global_model.h5")
-        initial_params = ndarrays_to_parameters(model.get_weights())
+        # === LA CORRECTION EST ICI ===
+        # On s'assure qu'on utilise le bon nom de fichier et le bon message d'erreur
+        model = create_model()
+        model.load_weights("global_model.weights.h5") 
+        initial_params = fl.common.ndarrays_to_parameters(model.get_weights())
+        print("✅ Initial model weights loaded successfully.")
     except Exception as e:
-        print(f"❌ Could not load initial model 'global_model.h5'. Did you run model_creator.py? Error: {e}")
+        print(f"❌ Could not load initial model weights from 'global_model.weights.h5'. Error: {e}")
         return
 
-    # Define the strategy
     strategy = FedIdsStrategy(
         initial_parameters=initial_params,
-        min_fit_clients=2,
-        min_evaluate_clients=2,
-        min_available_clients=2,
+        min_fit_clients=args.num_clients,
+        min_evaluate_clients=args.num_clients,
+        min_available_clients=args.num_clients,
         evaluate_metrics_aggregation_fn=weighted_average,
     )
     
-    # Give the FastAPI backend a moment to start up
-    print("Waiting 5 seconds for FastAPI backend to initialize...")
+    print("Waiting 5s for FastAPI backend...")
     time.sleep(5)
     
-    # Start the Flower server
     fl.server.start_server(
         server_address="0.0.0.0:8080",
         config=fl.server.ServerConfig(num_rounds=10),

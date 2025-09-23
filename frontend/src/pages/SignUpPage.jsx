@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import apiClient from '../api/apiClient';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 // Composant pour l'icône Google (réutilisé)
 const GoogleIcon = () => (
@@ -16,25 +17,37 @@ const GoogleIcon = () => (
 
 export default function SignUpPage() {
     const navigate = useNavigate();
-    const [email, setEmail] = useState('');
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
+    const [formData, setFormData] = useState({
+        email: '',
+        username: '',
+        password: '',
+        full_name: '',
+        company: '',
+        country: ''
+    });
+    
+    
+    const [showPassword, setShowPassword] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    
-    const handleSignUp = async (e) => {
+    const handleInputChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+const handleSignUp = async (e) => {
         e.preventDefault();
         setIsLoading(true);
         setErrorMsg('');
         try {
-            await apiClient.post('/api/auth/register', { email, username, password });
-            navigate('/verify-email', { state: { email: email } });
+            await apiClient.post('/api/auth/register', formData);
+            navigate('/verify-email', { state: { email: formData.email } });
         } catch (error) {
-            setErrorMsg(error.response?.data?.detail || 'An unexpected error occurred.');
+            setErrorMsg(error.response?.data?.detail || 'An error occurred.');
         } finally {
             setIsLoading(false);
         }
     };
+
 
     const handleGoogleLogin = () => {
         window.location.href = 'http://127.0.0.1:8000/api/auth/google';
@@ -42,26 +55,28 @@ export default function SignUpPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm">
-                <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Create a New Account</h2>
-                
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+                <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Create Your Account</h2>
                 {errorMsg && <p className="text-center text-red-500 bg-red-100 p-3 rounded-md mb-4">{errorMsg}</p>}
                 
                 <form onSubmit={handleSignUp} className="space-y-4">
-                    <div>
-                        <label className="block text-gray-700 mb-1 font-semibold">Email Address</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2 border rounded-md" required />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input name="full_name" type="text" placeholder="Full Name" value={formData.full_name} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required />
+                        <input name="username" type="text" placeholder="Username" value={formData.username} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required />
                     </div>
-                    <div>
-                        <label className="block text-gray-700 mb-1 font-semibold">Username</label>
-                        <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-2 border rounded-md" required />
+                    <input name="email" type="email" placeholder="Email Address" value={formData.email} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required />
+                    <div className="relative">
+                        <input name="password" type={showPassword ? "text" : "password"} placeholder="Password (min. 8 characters)" value={formData.password} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required minLength="8"/>
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500">
+                            {showPassword ? <EyeSlashIcon className="h-5 w-5"/> : <EyeIcon className="h-5 w-5"/>}
+                        </button>
                     </div>
-                    <div>
-                        <label className="block text-gray-700 mb-1 font-semibold">Password</label>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-2 border rounded-md" required minLength="8"/>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input name="company" type="text" placeholder="Company (Optional)" value={formData.company} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
+                        <input name="country" type="text" placeholder="Country (Optional)" value={formData.country} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
                     </div>
-                    <button type="submit" className="w-full bg-green-600 text-white py-2 rounded-md hover:bg-green-700 font-semibold" disabled={isLoading}>
-                        {isLoading ? 'Creating...' : 'Sign Up'}
+                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400" disabled={isLoading}>
+                        {isLoading ? 'Creating...' : 'Create Account'}
                     </button>
                 </form>
                 

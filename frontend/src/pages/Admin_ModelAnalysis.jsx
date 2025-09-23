@@ -1,140 +1,195 @@
-// frontend/src/components/ModelAnalysis.jsx
+// frontend/src/pages/Admin_ModelAnalysis.jsx
+import React, { useState, useEffect, useCallback } from 'react';
+import { Line } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
+import apiClient from '../api/apiClient';
 
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+// Enregistrement des composants ChartJS
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-// --- Configuration de l'API Client ---
-const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
-  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-});
-
-// --- Composant d'affichage des résultats ---
+// --- Sous-composant pour afficher les résultats de l'analyse ---
 function AnalysisResultDisplay({ result }) {
-    // Parser le rapport s'il est sous forme de chaîne JSON (pour l'historique)
-    const report = typeof result.report === 'string' ? JSON.parse(result.report) : result.report;
-    const classNames = Object.keys(report).filter(key => 
-        !['accuracy', 'macro avg', 'weighted avg'].includes(key)
-    );
-    return(
+    const report = result.report;
+    const classNames = Object.keys(report).filter(key => !['accuracy', 'macro avg', 'weighted avg'].includes(key));
+
+    return (
         <div className="mt-8 p-6 border-t-2 border-gray-200">
-            <h4 className="text-xl font-bold text-gray-800 mb-4">Résultats de l'analyse</h4>
+            <h4 className="text-xl font-bold text-gray-800 mb-4">Analysis Results</h4>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                 <div>
-                    <h5 className="font-semibold mb-2">Rapport de Classification</h5>
-                    <div className="overflow-x-auto border rounded-lg bg-white">
-                        <table className="text-xs w-full"><thead className="bg-gray-100 text-left"><tr><th className="p-2 font-bold">Classe</th><th className="p-2">Précision</th><th className="p-2">Rappel</th><th className="p-2">F1-Score</th><th className="p-2">Support</th></tr></thead><tbody>{classNames.map(name => (<tr key={name} className="border-t"><td className='p-2 font-bold'>{name}</td><td className='p-2'>{report[name].precision.toFixed(2)}</td><td className='p-2'>{report[name].recall.toFixed(2)}</td><td className='p-2'>{report[name]['f1-score'].toFixed(2)}</td><td className='p-2'>{report[name].support}</td></tr>))}</tbody></table>
+                    <h5 className="font-semibold mb-2">Classification Report</h5>
+                    <div className="overflow-x-auto border rounded-lg bg-white text-xs">
+                        <table className="min-w-full">
+                            <thead className="bg-gray-100 text-left">
+                                <tr>
+                                    <th className="p-2 font-bold">Class</th>
+                                    <th className="p-2">Precision</th>
+                                    <th className="p-2">Recall</th>
+                                    <th className="p-2">F1-Score</th>
+                                    <th className="p-2">Support</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {classNames.map(name => (
+                                    <tr key={name} className="border-t">
+                                        <td className='p-2 font-bold'>{name}</td>
+                                        <td className='p-2'>{report[name].precision.toFixed(2)}</td>
+                                        <td className='p-2'>{report[name].recall.toFixed(2)}</td>
+                                        <td className='p-2'>{report[name]['f1-score'].toFixed(2)}</td>
+                                        <td className='p-2'>{report[name].support}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
                 <div>
-                    <h5 className="font-semibold mb-2">Matrice de Confusion</h5>
-                    <p className="text-xs text-gray-500 mb-2">Axe Y = Vrai Label, Axe X = Prédiction</p>
-                    <img src={`data:image/png;base64,${result.confusion_matrix_base64 || result.confusion_matrix_b64}`} alt="Matrice de confusion" className="border rounded-lg shadow-sm"/>
+                    <h5 className="font-semibold mb-2">Confusion Matrix</h5>
+                    <p className="text-xs text-gray-500 mb-2">Y-axis = True Label, X-axis = Predicted Label</p>
+                    <img src={`data:image/png;base64,${result.confusion_matrix_b64}`} alt="Confusion Matrix" className="border rounded-lg shadow-sm w-full"/>
                 </div>
             </div>
         </div>
     );
 }
 
-// --- Composant Principal de la Page ---
-export default function ModelAnalysis() {
+// --- Composant Principal ---
+export default function AdminModelAnalysis() {
+    const [history, setHistory] = useState([]);
+    const [flHistory, setFlHistory] = useState([]);
+    const [chartData, setChartData] = useState({ labels: [], datasets: [] });
     const [file, setFile] = useState(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisResult, setAnalysisResult] = useState(null);
     const [error, setError] = useState('');
-    const [wsClientId, setWsClientId] = useState(null);
-    
-    const [history, setHistory] = useState([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-    const [selectedAnalysis, setSelectedAnalysis] = useState(null);
 
-    const fetchHistory = () => {
+    // --- Historique des analyses classiques ---
+    const fetchHistory = useCallback(() => {
         setIsLoadingHistory(true);
-        apiClient.get('/api/admin/analysis_history')
+        apiClient.get('/api/admin/analysis-history')
             .then(res => setHistory(res.data))
-            .catch(err => console.error("Could not fetch analysis history:", err))
             .finally(() => setIsLoadingHistory(false));
-    };
+    }, []);
 
     useEffect(() => {
         fetchHistory();
-        const clientId = uuidv4();
-        setWsClientId(clientId);
-        const ws = new WebSocket(`ws://127.0.0.1:8000/ws/analysis/${clientId}`);
+    }, [fetchHistory]);
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            setIsAnalyzing(false);
-            if (data.status === 'success') {
-                setSelectedAnalysis(data.data);
-                setError('');
-                fetchHistory(); // Rafraîchir l'historique après une nouvelle analyse
-            } else {
-                setError(data.message || "An error occurred during analysis.");
-            }
-        };
-        return () => ws.close();
+    const viewHistoryItem = async (historyId) => {
+        try {
+            const res = await apiClient.get(`/api/admin/analysis-history/${historyId}`);
+            setAnalysisResult(res.data);
+        } catch {
+            setError("Could not load this analysis result.");
+        }
+    };
+
+    // --- Historique FL pour le graphique ---
+    useEffect(() => {
+        apiClient.get('/api/admin/fl-history')
+            .then(res => {
+                setFlHistory(res.data);
+                const labels = res.data.map(h => `Round ${h.server_round}`);
+                const accuracyData = res.data.map(h => h.accuracy);
+                setChartData({
+                    labels,
+                    datasets: [{
+                        label: 'Global Model Accuracy',
+                        data: accuracyData,
+                        borderColor: 'rgb(79, 70, 229)',
+                        backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                        tension: 0.1,
+                        fill: true,
+                    }]
+                });
+            })
+            .catch(err => console.error("Failed to fetch FL history:", err));
     }, []);
 
-    const handleSubmit = async (e) => {
+    const handleFileChange = (e) => setFile(e.target.files[0]);
+
+    const handleAnalysisSubmit = async (e) => {
         e.preventDefault();
-        if (!file) { setError("Veuillez sélectionner un fichier CSV."); return; }
-        setIsAnalyzing(true);
-        setSelectedAnalysis(null);
-        setError('');
+        if (!file) { setError("Please select a CSV file."); return; }
+        setIsAnalyzing(true); setError(''); setAnalysisResult(null);
+        
         const formData = new FormData();
         formData.append("file", file);
+
         try {
-            await apiClient.post(`/api/admin/analyze_model?client_id=${wsClientId}`, formData);
+            const res = await apiClient.post('/api/admin/evaluate-model', formData);
+            setAnalysisResult(res.data);
+            fetchHistory(); // rafraîchir l'historique
         } catch (err) {
-            setError(err.response?.data?.detail || "Erreur lors de l'envoi du fichier.");
+            setError(err.response?.data?.detail || "Analysis failed.");
+        } finally {
             setIsAnalyzing(false);
         }
     };
-    
-    const viewHistoryItem = (item) => {
-        setSelectedAnalysis({
-            report: item.classification_report,
-            confusion_matrix_base64: item.confusion_matrix_b64
-        });
+
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, max: 1, ticks: { callback: value => `${(value * 100).toFixed(0)}%` } } },
+        plugins: { legend: { position: 'top' } }
     };
 
     return (
-        <div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-6">Analyse Détaillée du Modèle Global</h2>
+        <div className="space-y-8">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">Model Performance & Analysis</h1>
+                <p className="mt-1 text-gray-500">Track federated learning progress and evaluate the global model on demand.</p>
+            </div>
             
-            <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-                <p className="text-sm text-gray-600 mb-4">Chargez un fichier CSV de test pour évaluer le modèle et sauvegarder le résultat.</p>
-                <form onSubmit={handleSubmit} className="flex items-center gap-4">
-                    <input type="file" accept=".csv" onChange={e => setFile(e.target.files[0])} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                    <button type="submit" disabled={!file || isAnalyzing || !wsClientId} className="bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-semibold disabled:bg-gray-400">
-                        {isAnalyzing ? "Analyse en cours..." : "Lancer l'analyse"}
-                    </button>
-                </form>
-                {isAnalyzing && <div className="mt-6 text-center"><p className="font-semibold text-indigo-600">Le modèle analyse vos données...</p></div>}
-                {error && <p className="mt-4 text-red-600 p-3 bg-red-100 rounded-md text-sm">{error}</p>}
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Historique des Analyses</h3>
-                {isLoadingHistory ? <p>Chargement de l'historique...</p> : (
-                    <div className="divide-y divide-gray-200">
-                        {history.length > 0 ? history.map(item => (
-                            <div key={item.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
-                                <div>
-                                    <p className="font-semibold">{item.filename}</p>
-                                    <p className="text-xs text-gray-500">Analysé le : {new Date(item.timestamp).toLocaleString()}</p>
-                                </div>
-                                <button onClick={() => viewHistoryItem(item)} className="bg-gray-200 text-gray-800 px-3 py-1 rounded-md text-sm font-semibold hover:bg-gray-300">
-                                    Voir les résultats
-                                </button>
-                            </div>
-                        )) : <p className="text-sm text-gray-500">Aucune analyse n'a encore été effectuée.</p>}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                {/* --- Colonne Principale (Historique FL + Analyses) --- */}
+                <div className="lg:col-span-3 space-y-8">
+                    <div className="bg-white p-6 rounded-lg shadow-md">
+                        <h2 className="text-xl font-bold text-gray-700 mb-4">Federated Learning History</h2>
+                        <div className="h-80"><Line data={chartData} options={chartOptions} /></div>
                     </div>
-                )}
+
+                    <div className="bg-white p-6 rounded-lg shadow-md">
+                        <h2 className="text-xl font-bold">Analysis History</h2>
+                        {isLoadingHistory ? <p>Loading history...</p> : (
+                            <div className="divide-y">
+                                {history.map(item => (
+                                    <div key={item.id} className="flex justify-between items-center py-3">
+                                        <div>
+                                            <p className="font-semibold">{item.filename}</p>
+                                            <p className="text-xs text-gray-500">{new Date(item.timestamp).toLocaleString()}</p>
+                                        </div>
+                                        <button onClick={() => viewHistoryItem(item.id)} className="text-indigo-600 hover:underline">View Results</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* --- Colonne Latérale (Évaluation) --- */}
+                <div className="lg:col-span-2">
+                    <div className="bg-white p-6 rounded-lg shadow-md sticky top-8">
+                        <h2 className="text-xl font-bold text-gray-700 mb-4">Evaluate on Demand</h2>
+                        <form onSubmit={handleAnalysisSubmit}>
+                            <p className="text-sm text-gray-600 mb-4">Upload a test CSV file to get a detailed performance report.</p>
+                            <input type="file" accept=".csv" onChange={handleFileChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                            <button type="submit" disabled={!file || isAnalyzing} className="mt-4 w-full bg-indigo-600 text-white px-5 py-2 rounded-md text-sm font-semibold disabled:bg-gray-400">
+                                {isAnalyzing ? "Analyzing..." : "Run Evaluation"}
+                            </button>
+                        </form>
+                        {error && <p className="mt-4 text-red-600 p-3 bg-red-100 rounded-md text-sm">{error}</p>}
+                    </div>
+                </div>
             </div>
 
-            {selectedAnalysis && <AnalysisResultDisplay result={selectedAnalysis} />}
+            {/* --- Résultats d'analyse détaillés --- */}
+            {analysisResult && (
+                <div className="bg-white p-6 rounded-lg shadow-md mt-8">
+                    <AnalysisResultDisplay result={analysisResult} />
+                </div>
+            )}
         </div>
     );
 }

@@ -15,3 +15,7 @@ apscheduler
 matplotlib
 seaborn
 httpx  
+itsdangerous
+authlib
+geoip2
+stripe

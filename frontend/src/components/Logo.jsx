@@ -11,7 +11,6 @@ export default function Logo() {
         <Link to="/" className="flex items-center gap-3">
             {/* On utilise la variable importée */}
             <img src={logoImage} alt="FedIds Logo" className="h-64 w-auto" />
-            <span className="text-2xl font-bold text-white">FedIds</span>
         </Link>
     );
 }
