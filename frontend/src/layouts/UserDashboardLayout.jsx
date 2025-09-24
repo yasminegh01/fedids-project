@@ -5,6 +5,7 @@ import { NavLink, Outlet } from 'react-router-dom'; // On a besoin de Outlet
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 import { HomeIcon, CpuChipIcon, UserCircleIcon, ArrowUpCircleIcon, LifebuoyIcon } from '@heroicons/react/24/outline';
+import PremiumChatbot from '../components/PremiumChatbot'; // Importer le nouveau chatbot
 
 export default function UserDashboardLayout() {
     const { user, logout } = useAuth();

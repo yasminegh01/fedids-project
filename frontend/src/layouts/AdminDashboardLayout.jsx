@@ -45,6 +45,9 @@ export default function AdminDashboardLayout() {
                         <LifebuoyIcon className="h-5 w-5" />
                         Support Tickets
                     </NavLink>
+                    <NavLink to="/admin/chatbot-analytics" className={navLinkClass}>
+            Chatbot Analytics
+          </NavLink>
                 </nav>
             
                 <div className="pt-4 mt-auto border-t border-gray-700">

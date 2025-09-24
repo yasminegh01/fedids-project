@@ -90,6 +90,7 @@ import subprocess
 import sys
 from typing import List, Optional, Dict, Tuple # <<< Assurez-vous que Tuple est importé
 from sqlalchemy.orm import joinedload
+import google.generativeai as genai
 
 # ------------------------------------------------------------
 # SECTION 2: Global configuration
@@ -102,7 +103,9 @@ ALGORITHM = "HS256"
 GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "geoip_db/GeoLite2-City.mmdb")
 PREMIUM_PLAN_PRICE = int(os.getenv("PREMIUM_PLAN_PRICE", "200"))
 FRONTEND_BASE = os.getenv("FRONTEND_BASE", "http://localhost:5173")
-
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 mail_conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
@@ -270,6 +273,17 @@ class TicketMessage(Base):
     
     ticket = relationship("Ticket", back_populates="messages")
     author = relationship("User", foreign_keys=[author_id])
+
+class ChatLog(Base):
+    __tablename__ = "chat_logs"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    question = Column(Text, nullable=False)
+    # On pourrait aussi stocker la réponse du modèle si on le voulait
+    # answer = Column(Text) 
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User")
 def get_db():db=SessionLocal();yield db;db.close()
 # ------------------------------------------------------------
 # SECTION 5: Pydantic models (schemas)
@@ -466,6 +480,19 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class ChatQuery(BaseModel):
+    question: str
+    history: List[Dict[str, str]] # ex: [{"role": "user", "text": "..."}, {"role": "model", "text": "..."}]
+
+class ChatResponse(BaseModel):
+    answer: str
+
+
+class ChatStat(BaseModel):
+    question: str
+    count: int
 # ------------------------------------------------------------
 # SECTION 6: Helpers (auth, utils)
 # ------------------------------------------------------------
@@ -1695,6 +1722,70 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Password has been reset successfully."}
+
+@app.post("/api/chatbot/query", response_model=ChatResponse, dependencies=[Depends(get_current_user)])
+async def handle_chat_query(query: ChatQuery, user: User = Depends(get_current_user),db: Session = Depends(get_db)):
+    if user.role != 'premium':
+        raise HTTPException(status_code=403, detail="Chatbot is a premium feature.")
+    
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Chatbot is not configured on the server.")
+# === LA MODIFICATION EST ICI ===
+    # On enregistre la question de l'utilisateur dans la base de données
+    new_log = ChatLog(user_id=user.id, question=query.question)
+    db.add(new_log)
+    db.commit()
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # === LA CORRECTION EST ICI ===
+        
+        # 1. Définir le contexte et les instructions
+        system_prompt = """
+        You are FedIds Assist, a specialized AI assistant for a Federated Intrusion Detection System (FedIds).
+        Your purpose is to help users understand cybersecurity threats in an Industrial IoT (IIoT) context.
+        Your knowledge is focused on these attacks: Backdoor, DDoS, MITM, Port Scanning, Ransomware.
+        Be concise and helpful. If asked about topics outside of IIoT security, politely decline.
+        """
+        
+        # 2. Construire l'historique pour l'API
+        messages_for_api = []
+        
+        # 3. Injecter les instructions dans le premier message de l'historique
+        # S'il n'y a pas d'historique, on crée le premier message avec le prompt
+        if not query.history:
+            first_question = f"{system_prompt}\n\nUSER QUESTION: {query.question}"
+            messages_for_api.append({"role": "user", "parts": [first_question]})
+        else:
+            # S'il y a un historique, on le reconstruit normalement
+            for message in query.history:
+                # On s'assure que le rôle est bien 'user' ou 'model'
+                role = "user" if message["role"] == "user" else "model"
+                messages_for_api.append({"role": role, "parts": [message["text"]]})
+            # Et on ajoute la nouvelle question de l'utilisateur
+            messages_for_api.append({"role": "user", "parts": [query.question]})
+        # On interroge l'API
+        response = await model.generate_content_async(messages_for_api)
+        
+        return ChatResponse(answer=response.text)
+
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while communicating with the AI assistant.")
+
+@app.get("/api/admin/chatbot/stats", response_model=List[ChatStat], dependencies=[Depends(get_current_admin_user)])
+def get_chatbot_stats(db: Session = Depends(get_db)):
+    """
+    Compte les occurrences de chaque question posée au chatbot
+    et renvoie les 10 plus fréquentes.
+    """
+    # On groupe par question, on compte, on ordonne par le compte, et on prend les 10 premières
+    stats = db.query(
+        ChatLog.question, 
+        func.count(ChatLog.question).label('count')
+    ).group_by(ChatLog.question).order_by(func.count(ChatLog.question).desc()).limit(10).all()
+    
+    return stats
 # ------------------------------------------------------------
 # WebSockets routes
 # ------------------------------------------------------------

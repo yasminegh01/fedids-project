@@ -36,6 +36,7 @@ import AdminModelPerformance from './pages/Admin_ModelPerformance'; // N'oubliez
 import AdminFLMonitoring from './pages/Admin_FL_Monitoring'; // <-- NOUVEL IMPORT
 import UserSupportPage from './pages/User_SupportPage';
 import AdminTicketsPage from './pages/Admin_TicketsPage';
+import AdminChatbotAnalytics from './pages/Admin_ChatbotAnalytics';
 
 export default function App() {
   return (
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="performance" element={<AdminModelPerformance />} />
     <Route path="federated-learning" element={<AdminFLMonitoring />} />
         <Route path="tickets" element={<AdminTicketsPage />} />
+        <Route path="chatbot-analytics" element={<AdminChatbotAnalytics />} />
 
 
       </Route>
