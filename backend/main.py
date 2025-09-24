@@ -89,6 +89,7 @@ from model_definition import create_model
 import subprocess
 import sys
 from typing import List, Optional, Dict, Tuple # <<< Assurez-vous que Tuple est importé
+from sqlalchemy.orm import joinedload
 
 # ------------------------------------------------------------
 # SECTION 2: Global configuration
@@ -162,7 +163,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     devices = relationship("Device", back_populates="owner", cascade="all, delete-orphan")
-    tickets = relationship("Ticket", back_populates="user", cascade="all, delete-orphan")
+    tickets = relationship("Ticket", foreign_keys="[Ticket.user_id]", back_populates="user")
+
+
+
+
 class Device(Base):
     __tablename__ = "devices"
     id = Column(Integer, primary_key=True)
@@ -178,6 +183,9 @@ class Device(Base):
     owner = relationship("User", back_populates="devices")
     prevention_enabled = Column(Boolean, default=False)
     registration_token = Column(String, unique=True, nullable=True)
+
+
+
 class DeviceStatus(Base):
     __tablename__ = "device_status"
     id = Column(Integer, primary_key=True)
@@ -217,22 +225,40 @@ class AnalysisHistory(Base):
     
     # On lie l'analyse à l'admin qui l'a lancée
     admin_id = Column(Integer, ForeignKey("users.id"))
+
+    
 class Ticket(Base):
     __tablename__ = "tickets"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     subject = Column(String, nullable=False)
+    assigned_admin_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
-    # --- NOUVEAUX CHAMPS AVANCÉS ---
-    category = Column(String, default="general") # general, technical, billing
-    status = Column(String, default="open") # open, pending_user, pending_admin, closed
-    priority = Column(String, default="medium") # low, medium, high, critical
-    
+    # --- NOUVEAUX CHAMPS ---
+    category = Column(String, default="general")
+    status = Column(String, default="open")
+    priority = Column(String, default="medium")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    user = relationship("User", back_populates="tickets")
+    # === LA CORRECTION EST ICI ===
+    
+    # Relation pour le créateur du ticket
+    user = relationship("User", foreign_keys=[user_id], back_populates="tickets")
+    
+    # Relation pour l'admin assigné
+    assigned_admin = relationship("User", foreign_keys=[assigned_admin_id])
+    
     messages = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
+
+
+class FaqArticle(Base):
+    __tablename__ = "faq_articles"
+    id = Column(Integer, primary_key=True)
+    question = Column(String, nullable=False)
+    answer = Column(Text, nullable=False)
+    keywords = Column(String) # Mots-clés séparés par des virgules
+    category = Column(String, default="general") # general, technical, billing
 
 class TicketMessage(Base):
     __tablename__ = "ticket_messages"
@@ -243,7 +269,7 @@ class TicketMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     ticket = relationship("Ticket", back_populates="messages")
-    author = relationship("User")
+    author = relationship("User", foreign_keys=[author_id])
 def get_db():db=SessionLocal();yield db;db.close()
 # ------------------------------------------------------------
 # SECTION 5: Pydantic models (schemas)
@@ -408,9 +434,9 @@ class TrainingStatus(BaseModel):
     is_running: bool
     pid: Optional[int] = None # Process ID
 class TicketCreate(BaseModel):
-    subject: str
-    message: str
-    priority: str = "medium"
+   category: str
+   subject: str
+   message: str
 
 class TicketMessageCreate(BaseModel):
     message: str
@@ -1480,12 +1506,12 @@ def analyze_ticket_content(subject: str, message: str) ->  Tuple[str, str]:
 @app.post("/api/tickets", status_code=201)
 def create_ticket(ticket_data: TicketCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     print("--- 1. Début de la création du ticket ---")
-    category, priority = analyze_ticket_content(ticket_data.subject, ticket_data.message)
+    _, priority = analyze_ticket_content(ticket_data.subject, ticket_data.message)
     
     new_ticket = Ticket(
         user_id=current_user.id,
         subject=ticket_data.subject,
-        category=category,
+        category=ticket_data.category, # On utilise la catégorie fournie
         priority=priority
     )
     db.add(new_ticket)
@@ -1522,35 +1548,117 @@ def get_my_tickets(current_user: User = Depends(get_current_user)):
 # Endpoint pour qu'un admin voie TOUS les tickets
 @app.get("/api/admin/tickets", dependencies=[Depends(get_current_admin_user)])
 def get_all_tickets(db: Session = Depends(get_db)):
-    return db.query(Ticket).order_by(Ticket.updated_at.desc()).all()
+    # === LA CORRECTION EST ICI ===
+    # On utilise .options(joinedload(Ticket.user)) pour forcer le chargement
+    # de la relation 'user' en même temps que les tickets.
+    return db.query(Ticket).options(joinedload(Ticket.user)).order_by(Ticket.updated_at.desc()).all()
 
 # Endpoint pour voir les détails d'un ticket (messages inclus)
+
 @app.get("/api/tickets/{ticket_id}")
 def get_ticket_details(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    # === LA CORRECTION EST ICI ===
+    # On utilise un joinedload "chaîné" pour charger les messages ET l'auteur de chaque message.
+    ticket = db.query(Ticket).options(
+        joinedload(Ticket.messages).joinedload(TicketMessage.author)
+    ).filter(Ticket.id == ticket_id).first()
+    
     # Vérifier que l'utilisateur a le droit de voir ce ticket
     if not ticket or (ticket.user_id != current_user.id and current_user.role != 'admin'):
-        raise HTTPException(404, "Ticket not found")
+        raise HTTPException(status_code=404, detail="Ticket not found")
+        
     return ticket
+@app.post("/api/tickets/{ticket_id}/close", status_code=200)
+def close_ticket(
+    ticket_id: int, 
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """
+    Permet à un admin de clore n'importe quel ticket.
+    (On pourrait aussi autoriser l'utilisateur, mais on se concentre sur le besoin de l'admin).
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    
+    # === LA LOGIQUE DE PERMISSION CORRIGÉE ===
+    # On vérifie d'abord si le ticket existe
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+        
+    # Ensuite, on vérifie si l'utilisateur est un admin
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="You do not have permission to close this ticket.")
+        
+    if ticket.status == 'closed':
+        raise HTTPException(status_code=400, detail="Ticket is already closed.")
 
+    ticket.status = "closed"
+    ticket.updated_at = datetime.utcnow()
+    db.commit()
+    
+    return {"message": "Ticket has been closed successfully by admin."}
 # Endpoint pour répondre à un ticket
 @app.post("/api/tickets/{ticket_id}/reply")
-def reply_to_ticket(ticket_id: int, message_data: TicketMessageCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    # ... (vérifier les permissions)
+def reply_to_ticket(
+    ticket_id: int, 
+    message_data: TicketMessageCreate, 
+    background_tasks: BackgroundTasks, # <-- Ajouté pour les emails
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    ticket = db.query(Ticket).options(joinedload(Ticket.user)).filter(Ticket.id == ticket_id).first()
     
+    # Vérifier les permissions
+    if not ticket or (ticket.user_id != current_user.id and current_user.role != 'admin'):
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Créer le nouveau message
     new_message = TicketMessage(
         ticket_id=ticket.id,
         author_id=current_user.id,
         message=message_data.message
     )
-    # Mettre à jour le statut du ticket
-    ticket.status = "pending_admin" if current_user.role == "user" else "pending_user"
+    db.add(new_message)
+    
+    # Mettre à jour le statut et la date du ticket
+    if current_user.role == 'admin':
+        ticket.status = "pending_user" # L'admin a répondu, en attente de l'utilisateur
+        
+        # === NOTIFICATION PAR EMAIL ===
+        user_to_notify = ticket.user
+        fm = FastMail(mail_conf)
+        msg = MessageSchema(
+            subject=f"Re: Your ticket #{ticket.id} - {ticket.subject}",
+            recipients=[user_to_notify.email],
+            body=f"<p>A support agent has replied to your ticket. Please log in to view the response.</p>",
+            subtype="html"
+        )
+        background_tasks.add_task(fm.send_message, msg)
+        
+    else: # C'est un utilisateur qui répond
+        ticket.status = "pending_admin"
+    
     ticket.updated_at = datetime.utcnow()
     
-    db.add(new_message)
     db.commit()
+    db.refresh(new_message)
     return new_message
+@app.post("/api/admin/tickets/{ticket_id}/assign", dependencies=[Depends(get_current_admin_user)])
+def assign_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket: raise HTTPException(404, "Ticket not found")
+    
+    ticket.assigned_admin_id = current_user.id
+    ticket.status = "in_progress"
+    db.commit()
+    return {"message": f"Ticket assigned to {current_user.username}"}
+
+@app.get("/api/faq/search")
+def search_faq(query: str, db: Session = Depends(get_db)):
+    """
+    Recherche simple par mots-clés dans la base de connaissances.
+    """
+    return db.query(FaqArticle).filter(FaqArticle.keywords.contains(query.lower())).all()
 
 @app.post("/api/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
