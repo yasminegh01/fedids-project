@@ -54,111 +54,144 @@ export default function UserProfile() {
         }
     };
 
+    const handlePictureChange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        setIsLoading(true);
+        const fd = new FormData();
+        fd.append("file", file);
+        try {
+            const response = await apiClient.post(
+                "/api/users/me/upload-picture",
+                fd
+            );
+            refreshUser(response.data);
+            setFeedback({
+                type: "success",
+                message: "Picture updated successfully!",
+            });
+        } catch (err) {
+            setFeedback({
+                type: "error",
+                message: "Failed to upload picture.",
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
+    if (!user)
+        return <div className="text-center p-8 dark:text-gray-300">Loading profile...</div>; // Dark mode text for loading
 
-  const handlePictureChange = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    setIsLoading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      const response = await apiClient.post(
-        "/api/users/me/upload-picture",
-        fd
-      );
-      refreshUser(response.data);
-      setFeedback({
-        type: "success",
-        message: "Picture updated successfully!",
-      });
-    } catch (err) {
-      setFeedback({
-        type: "error",
-        message: "Failed to upload picture.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const profilePicUrl = user.profile_picture_url
+        ? `${API_BASE_URL}${user.profile_picture_url}?t=${new Date().getTime()}`
+        : `https://ui-avatars.com/api/?name=${user.username || "U"}&background=random&color=fff&bold=true`;
 
-  if (!user)
-    return <div className="text-center p-8">Loading profile...</div>;
-
-  const profilePicUrl = user.profile_picture_url
-    ? `${API_BASE_URL}${user.profile_picture_url}?t=${new Date().getTime()}`
-    : `https://ui-avatars.com/api/?name=${user.username || "U"}&background=random&color=fff&bold=true`;
-
- // --- IL N'Y A MAINTENANT QU'UN SEUL RETURN ---
+    // --- IL N'Y A MAINTENANT QU'UN SEUL RETURN ---
     return (
-        <div className="max-w-4xl mx-auto p-8">
-            <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Your Profile</h2>
+        <div className="max-w-4xl mx-auto p-8 bg-gray-50 dark:bg-gray-900 min-h-screen"> {/* Added dark mode background to outer div */}
+            <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-8 text-center">Your Profile</h2>
 
             {feedback.message && (
-                <div className={`p-3 rounded mb-6 text-center ${feedback.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                <div className={`p-3 rounded mb-6 text-center ${feedback.type === "success" ? "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100" : "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100"}`}>
                     {feedback.message}
                 </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* --- Colonne Photo --- */}
-                <div className="md:col-span-1 text-center flex flex-col items-center bg-white p-6 rounded-lg shadow-md">
-                    <img src={profilePicUrl} alt="Profile" className="w-40 h-40 rounded-full object-cover shadow-lg border-4 border-white" />
+                <div className="md:col-span-1 text-center flex flex-col items-center bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md dark:shadow-lg-dark">
+                    <img src={profilePicUrl} alt="Profile" className="w-40 h-40 rounded-full object-cover shadow-lg border-4 border-white dark:border-gray-700" />
                     <input type="file" ref={fileInputRef} onChange={handlePictureChange} className="hidden" accept="image/*" />
-                    <button onClick={() => fileInputRef.current.click()} disabled={isLoading} className="mt-4 px-5 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 transition disabled:opacity-50">
+                    <button onClick={() => fileInputRef.current.click()} disabled={isLoading} className="mt-4 px-5 py-2 bg-blue-600 dark:bg-blue-700 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 dark:hover:bg-blue-600 transition disabled:opacity-50">
                         {isLoading ? "Processing..." : "Change Picture"}
                     </button>
                 </div>
 
                 {/* --- Formulaire d'Informations --- */}
-                <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-md">
+                <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md dark:shadow-lg-dark">
                     <form onSubmit={handleProfileUpdate} className="space-y-6">
                         <div>
-                            <label className="text-sm font-semibold text-gray-500">Email (cannot be changed)</label>
-                            <p className="text-lg font-medium text-gray-900">{user.email}</p>
+                            <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Email (cannot be changed)</label>
+                            <p className="text-lg font-medium text-gray-900 dark:text-gray-200">{user.email}</p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label htmlFor="username" className="block font-semibold text-gray-700">Username</label>
-                                <input id="username" name="username" type="text" value={formData.username} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
+                                <label htmlFor="username" className="block font-semibold text-gray-700 dark:text-gray-300">Username</label>
+                                <input
+                                    id="username"
+                                    name="username"
+                                    type="text"
+                                    value={formData.username}
+                                    onChange={handleInputChange}
+                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+                                />
                             </div>
                             <div>
-                                <label htmlFor="full_name" className="block font-semibold text-gray-700">Full Name</label>
-                                <input id="full_name" name="full_name" type="text" value={formData.full_name} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
+                                <label htmlFor="full_name" className="block font-semibold text-gray-700 dark:text-gray-300">Full Name</label>
+                                <input
+                                    id="full_name"
+                                    name="full_name"
+                                    type="text"
+                                    value={formData.full_name}
+                                    onChange={handleInputChange}
+                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+                                />
                             </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label htmlFor="company" className="block font-semibold text-gray-700">Company</label>
-                                <input id="company" name="company" type="text" value={formData.company} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
+                                <label htmlFor="company" className="block font-semibold text-gray-700 dark:text-gray-300">Company</label>
+                                <input
+                                    id="company"
+                                    name="company"
+                                    type="text"
+                                    value={formData.company}
+                                    onChange={handleInputChange}
+                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+                                />
                             </div>
                             <div>
-                                <label htmlFor="job_title" className="block font-semibold text-gray-700">Job Title</label>
-                                <input id="job_title" name="job_title" type="text" value={formData.job_title} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
+                                <label htmlFor="job_title" className="block font-semibold text-gray-700 dark:text-gray-300">Job Title</label>
+                                <input
+                                    id="job_title"
+                                    name="job_title"
+                                    type="text"
+                                    value={formData.job_title}
+                                    onChange={handleInputChange}
+                                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+                                />
                             </div>
                         </div>
 
                         <div>
-                            <label htmlFor="country" className="block font-semibold text-gray-700">Country</label>
-                            <input id="country" name="country" type="text" value={formData.country} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
+                            <label htmlFor="country" className="block font-semibold text-gray-700 dark:text-gray-300">Country</label>
+                            <input
+                                id="country"
+                                name="country"
+                                type="text"
+                                value={formData.country}
+                                onChange={handleInputChange}
+                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+                            />
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700"> {/* Added dark border */}
                             <div>
-                                <label className="text-sm font-semibold text-gray-500">Role</label>
-                                <p className="text-lg font-medium capitalize">{user.role}</p>
+                                <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Role</label>
+                                <p className="text-lg font-medium capitalize text-gray-900 dark:text-gray-200">{user.role}</p>
                             </div>
                             <div>
-                                <label className="text-sm font-semibold text-gray-500">Subscription Valid Until</label>
-                                <p className="text-lg font-medium">
+                                <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Subscription Valid Until</label>
+                                <p className="text-lg font-medium text-gray-900 dark:text-gray-200">
                                     {user.subscription_valid_until ? new Date(user.subscription_valid_until).toLocaleDateString() : "—"}
                                 </p>
                             </div>
                         </div>
 
-                        <button type="submit" disabled={isLoading} className="w-full bg-green-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-green-700 transition disabled:opacity-50">
+                        <button type="submit" disabled={isLoading} className="w-full bg-green-600 dark:bg-green-700 text-white px-5 py-3 rounded-lg shadow-md hover:bg-green-700 dark:hover:bg-green-600 transition disabled:opacity-50">
                             {isLoading ? "Saving..." : "Save Changes"}
                         </button>
                     </form>

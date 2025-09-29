@@ -1,5 +1,4 @@
 // frontend/src/pages/Admin_AttackHistory.jsx
-
 import React, { useState, useEffect } from 'react';
 import apiClient from '../api/apiClient';
 
@@ -9,7 +8,6 @@ export default function AdminAttackHistory() {
     const [error, setError] = useState('');
 
     useEffect(() => {
-        // Cet endpoint doit exister dans votre main.py et être protégé par `Depends(get_current_admin_user)`
         apiClient.get('/api/admin/attacks/history')
             .then(response => {
                 setHistory(response.data);
@@ -21,42 +19,52 @@ export default function AdminAttackHistory() {
             .finally(() => {
                 setIsLoading(false);
             });
-    }, []); // Le tableau vide assure que l'appel ne se fait qu'une fois
+    }, []);
 
     if (isLoading) {
-        return <div>Loading attack history...</div>;
+        return <div className="text-center p-10 text-text-secondary">Loading global attack history...</div>;
     }
 
     if (error) {
-        return <div className="text-red-500">{error}</div>;
+        return <div className="p-4 bg-red-100 text-red-800 rounded-md">{error}</div>;
     }
 
     return (
-        <div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-6">Global Attack History</h2>
+        <div className="space-y-6">
+            <h1 className="text-3xl font-bold text-text-primary">Global Attack History</h1>
             
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            {/* Le conteneur principal utilise maintenant les couleurs du thème */}
+            <div className="bg-bg-primary rounded-lg shadow-md overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
-                        <thead className="bg-gray-100">
+                        {/* L'en-tête du tableau utilise les couleurs du thème */}
+                        <thead className="bg-bg-secondary">
                             <tr>
-                                <th className="p-3 text-left">Timestamp</th>
-                                <th className="p-3 text-left">Source IP</th>
-                                <th className="p-3 text-left">Attack Type</th>
-                                <th className="p-3 text-left">Location</th>
-                                <th className="p-3 text-left">Confidence</th>
+                                <th className="p-3 text-left font-semibold text-text-secondary">Timestamp</th>
+                                <th className="p-3 text-left font-semibold text-text-secondary">Source IP</th>
+                                <th className="p-3 text-left font-semibold text-text-secondary">Attack Type</th>
+                                <th className="p-3 text-left font-semibold text-text-secondary">Location</th>
+                                <th className="p-3 text-left font-semibold text-text-secondary">Confidence</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y">
-                            {history.map(attack => (
-                                <tr key={attack.id} className="hover:bg-gray-50">
-                                    <td className="p-3">{new Date(attack.timestamp).toLocaleString()}</td>
-                                    <td className="p-3 font-mono">{attack.source_ip}</td>
-                                    <td className="p-3 font-semibold">{attack.attack_type}</td>
-                                    <td className="p-3">{attack.city || 'N/A'}, {attack.country}</td>
-                                    <td className="p-3 font-bold">{(attack.confidence * 100).toFixed(1)}%</td>
+                        {/* La bordure du corps du tableau s'adapte au thème */}
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {history.length > 0 ? history.map(attack => (
+                                // Le survol de la ligne utilise les couleurs du thème
+                                <tr key={attack.id} className="hover:bg-bg-secondary">
+                                    <td className="p-3 text-text-secondary">{new Date(attack.timestamp).toLocaleString()}</td>
+                                    <td className="p-3 font-mono text-text-primary">{attack.source_ip}</td>
+                                    <td className="p-3 font-semibold text-text-primary">{attack.attack_type}</td>
+                                    <td className="p-3 text-text-secondary">{attack.city || 'N/A'}{attack.country ? `, ${attack.country}` : ''}</td>
+                                    <td className="p-3 font-bold text-accent">{(attack.confidence * 100).toFixed(1)}%</td>
                                 </tr>
-                            ))}
+                            )) : (
+                                <tr>
+                                    <td colSpan="5" className="p-6 text-center text-text-secondary">
+                                        No attack data available yet.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

@@ -1,16 +1,20 @@
+
+
+
+
 // frontend/src/components/Logo.jsx
 import React from 'react';
-import { Link } from 'react-router-dom';
-
-// === LA CORRECTION EST ICI ===
-// On importe l'image depuis le dossier `src/assets`
-import logoImage from '../assets/logo.png'; // Assurez-vous que le nom du fichier est correct
+import { useTheme } from '../context/ThemeContext';
+import logoLight from '../assets/logo-light.png'; // Logo pour fond sombre
+import logoDark from '../assets/logo-dark.png';   // Logo pour fond clair
 
 export default function Logo() {
+    const { theme } = useTheme();
     return (
-        <Link to="/" className="flex items-center gap-3">
-            {/* On utilise la variable importée */}
-            <img src={logoImage} alt="FedIds Logo" className="h-64 w-auto" />
-        </Link>
+        <img 
+            src={theme === 'light' ? logoDark : logoLight} 
+            alt="FedIds Logo" 
+            className="h-80 w-auto" 
+        />
     );
 }

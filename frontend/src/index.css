@@ -1,29 +1,31 @@
+/* frontend/src/index.css */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* frontend/src/index.css */
-
-@keyframes pulse-once {
-  0%, 100% { 
-    transform: scale(1); 
-    opacity: 1; 
-  }
-  50% { 
-    transform: scale(1.02); 
-    opacity: 0.95; 
-  }
-}
-.animate-pulse-once {
-  animation: pulse-once 0.5s ease-out;
+/* On définit les variables de couleur pour chaque thème */
+:root {
+  /* Thème Clair (par défaut) */
+  --color-text-primary: #111827; /* Presque noir */
+  --color-text-secondary: #6B7280; /* Gris moyen */
+  --color-bg-primary: #FFFFFF;   /* Blanc */
+  --color-bg-secondary: #F3F4F6; /* Gris très clair */
+  --color-accent: #3B82F6;       /* Bleu */
+  --color-accent-hover: #2563EB;
 }
 
-@keyframes ping-slow {
-  75%, 100% {
-    transform: scale(2.5);
-    opacity: 0;
-  }
+.dark {
+  /* Thème Sombre */
+  --color-text-primary: #F9FAFB; /* Presque blanc */
+  --color-text-secondary: #9CA3AF; /* Gris clair */
+  --color-bg-primary: #111827;   /* Gris-noir */
+  --color-bg-secondary: #1F2937; /* Gris plus clair */
+  --color-accent: #60A5FA;       /* Bleu plus clair */
+  --color-accent-hover: #3B82F6;
 }
-.animate-ping-slow {
-  animation: ping-slow 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+
+/* Style de base pour que les transitions de couleur soient douces */
+body {
+  @apply bg-bg-secondary text-text-primary transition-colors duration-300;
 }

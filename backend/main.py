@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import List, Optional, Dict
 from urllib.parse import urlencode
 from fastapi import status as http_status
-
+import enum
 from dotenv import load_dotenv
 import uvicorn
 from fastapi import (
@@ -97,15 +97,32 @@ import google.generativeai as genai
 # ------------------------------------------------------------
 print("--- MAIN.PY LOADED - VERSION DU 7 SEPTEMBRE ---")
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fedids_main.db")
+# DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fedids_main.db")
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-dev-key")
 ALGORITHM = "HS256"
 GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "geoip_db/GeoLite2-City.mmdb")
 PREMIUM_PLAN_PRICE = int(os.getenv("PREMIUM_PLAN_PRICE", "200"))
 FRONTEND_BASE = os.getenv("FRONTEND_BASE", "http://localhost:5173")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+
+if not GEMINI_API_KEY:
+    print("❌ ERREUR: La variable d'environnement GEMINI_API_KEY n'est pas définie dans votre fichier .env")
+else:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        print("✅ Clé API configurée. Demande de la liste des modèles...")
+        
+        # Demander à Google la liste des modèles disponibles
+        for m in genai.list_models():
+            # On cherche les modèles qui supportent la méthode 'generateContent'
+            if 'generateContent' in m.supported_generation_methods:
+                print(f"  - Modèle trouvé : {m.name}")
+
+    except Exception as e:
+        print(f"❌ Une erreur est survenue lors de la communication avec l'API de Google: {e}")
+
+
+
 mail_conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
@@ -493,6 +510,9 @@ class ChatResponse(BaseModel):
 class ChatStat(BaseModel):
     question: str
     count: int
+class TicketCategoryStat(BaseModel):
+    category: str
+    count: int
 # ------------------------------------------------------------
 # SECTION 6: Helpers (auth, utils)
 # ------------------------------------------------------------
@@ -600,7 +620,14 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     # create default admin if none
     with SessionLocal() as db:
-        if not db.query(User).filter_by(username="yasmine").first():
+        # On vérifie si un utilisateur avec cet email ou ce username existe déjà
+        user_exists = db.query(User).filter(
+            (User.email == "yasmine@fedids.io") | (User.username == "yasmine")
+        ).first()
+        
+        # On ne crée l'admin que s'il n'existe PAS
+        if not user_exists:
+            print("Admin user 'yasmine' not found, creating new one...")
             admin = User(
                 email="yasmine@fedids.io",
                 username="yasmine",
@@ -610,8 +637,12 @@ async def lifespan(app: FastAPI):
             )
             db.add(admin)
             db.commit()
+            print("✅ Admin user 'yasmine' created successfully.")
+        else:
+            print("Admin user 'yasmine' already exists. Skipping creation.")
+    # === FIN DE LA CORRECTION ===
+            
     yield
-
 
 app = FastAPI(title="FedIds API", lifespan=lifespan)
 
@@ -803,7 +834,6 @@ def register_device(device_in: DeviceCreate, user: User = Depends(get_current_us
     db.refresh(new_device)
     return new_device
 
-
 @app.get("/api/devices/install/{reg_token}", response_class=PlainTextResponse)
 def get_install_script(reg_token: str, db: Session = Depends(get_db)):
     device = db.query(Device).filter(Device.registration_token == reg_token).first()
@@ -816,31 +846,43 @@ def get_install_script(reg_token: str, db: Session = Depends(get_db)):
 
     github_client_repo_url = "https://github.com/yasminegh01/fedids-iiot-client.git"
 
+    # === LE NOUVEAU SCRIPT "EN LIGNE" ===
     script_content = f"""#!/bin/bash
-set -e
+set -e # Arrêter le script si une commande échoue
 
-# 1. System deps
+echo "--- FedIds IIoT Online Installer ---"
+
+# 1. Installer les dépendances système (Python 3.11, git, etc.)
+echo "➡️ Step 1/4: Installing system dependencies..."
 sudo apt-get update
 sudo apt-get install -y git python3.11 python3.11-venv libasound2-dev
 
-# 2. Clone
-git clone {github_client_repo_url} iiot_client || (cd iiot_client && git pull)
+# 2. Cloner le code source du client
+echo "➡️ Step 2/4: Downloading client source code..."
+git clone {github_client_repo_url} iiot_client
 cd iiot_client
 
-# 3. venv & deps
+# 3. Créer l'environnement virtuel et installer les paquets (en ligne)
+echo "➡️ Step 3/4: Creating venv and installing packages (this will take time)..."
 python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 4. config
-cat > config.ini <<EOF
-[device]
-api_key = {api_key}
-EOF
+# 4. Configurer l'appareil
+echo "➡️ Step 4/4: Configuring device..."
+echo "[device]" > config.ini
+echo "api_key = {api_key}" >> config.ini
 
-echo "Installation complete"
+echo ""
+echo "🚀 Installation Complete!"
+echo "To start the client, navigate to the 'iiot_client' directory and run:"
+echo "   source venv/bin/activate"
+echo "   python client.py --client-id 0 --config config.ini --server-ip <YOUR_SERVER_IP>"
 """
     return script_content
+
+
+
 
 
 @app.get("/api/devices/my-devices-with-status", response_model=List[DeviceWithStatus])
@@ -1501,30 +1543,37 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
 # --- TICKETS (ADMIN) ---
 
-def analyze_ticket_content(subject: str, message: str) ->  Tuple[str, str]:
+def analyze_ticket_content(subject: str, message: str) -> Tuple[str, str]:
     """
-    Analyse le contenu d'un ticket pour déterminer sa catégorie et sa priorité.
-    C'est une simulation d'IA simple.
+    Analyse le contenu d'un ticket pour déterminer sa priorité.
     """
     text = (subject + " " + message).lower()
     
-    # Détermination de la priorité
-    if "urgent" in text or "critical" in text or "down" in text:
+    # === LA LOGIQUE DE PRIORITÉ AMÉLIORÉE EST ICI ===
+
+    # 1. On cherche d'abord les mots-clés les plus critiques
+    critical_keywords = ["urgent", "critical", "down", "outage", "cannot work", "production stop"]
+    if any(keyword in text for keyword in critical_keywords):
         priority = "critical"
-    elif "billing" in text or "payment" in text or "invoice" in text:
+        return priority # On s'arrête ici si c'est critique
+
+    # 2. Ensuite, les mots-clés de haute priorité
+    high_keywords = ["billing", "payment", "invoice", "security issue", "vulnerability"]
+    if any(keyword in text for keyword in high_keywords):
         priority = "high"
-    else:
+        return priority
+
+    # 3. Ensuite, les mots-clés de priorité moyenne
+    medium_keywords = ["bug", "error", "not working", "problem", "issue"]
+    if any(keyword in text for keyword in medium_keywords):
         priority = "medium"
+        return priority
         
-    # Détermination de la catégorie
-    if "billing" in text or "payment" in text:
-        category = "billing"
-    elif "bug" in text or "error" in text or "not working" in text:
-        category = "technical"
-    else:
-        category = "general"
+    # 4. Si aucun mot-clé correspondant n'est trouvé, la priorité est basse
+    # C'est le cas pour les questions générales, les demandes de fonctionnalités, etc.
+    priority = "low"
         
-    return category, priority
+    return priority
 
 
 # Endpoint pour créer un ticket (utilisé par l'utilisateur)
@@ -1533,7 +1582,7 @@ def analyze_ticket_content(subject: str, message: str) ->  Tuple[str, str]:
 @app.post("/api/tickets", status_code=201)
 def create_ticket(ticket_data: TicketCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     print("--- 1. Début de la création du ticket ---")
-    _, priority = analyze_ticket_content(ticket_data.subject, ticket_data.message)
+    priority = analyze_ticket_content(ticket_data.subject, ticket_data.message)
     
     new_ticket = Ticket(
         user_id=current_user.id,
@@ -1670,6 +1719,55 @@ def reply_to_ticket(
     db.commit()
     db.refresh(new_message)
     return new_message
+
+
+# Ajoutez ce nouvel endpoint (pour l'admin)
+@app.get("/api/admin/tickets/stats", response_model=List[TicketCategoryStat], dependencies=[Depends(get_current_admin_user)])
+def get_ticket_category_stats(db: Session = Depends(get_db)):
+    """
+    Compte le nombre de tickets par catégorie.
+    """
+    stats = db.query(
+        Ticket.category,
+        func.count(Ticket.id).label("count")
+    ).group_by(Ticket.category).all()
+    
+    # Le résultat est une liste de tuples, on le convertit en liste de dictionnaires
+    return [{"category": category, "count": count} for category, count in stats]
+@app.delete("/api/tickets/{ticket_id}", status_code=http_status.HTTP_204_NO_CONTENT)
+def delete_ticket(
+    ticket_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Supprime un ticket.
+    - L'utilisateur doit être le propriétaire du ticket ou un admin.
+    - Le ticket doit avoir le statut 'closed'.
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+
+    # 1. Vérifier si le ticket existe
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+
+    # 2. Vérifier les permissions (propriétaire ou admin)
+    if ticket.user_id != current_user.id and current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this ticket.")
+
+    # 3. Vérifier si le ticket est bien clos
+    if ticket.status != 'closed':
+        # On renvoie une erreur 400 (Bad Request) avec un message clair
+        raise HTTPException(status_code=400, detail="This ticket is not closed yet. Please wait for an admin to resolve it.")
+
+    # 4. Si tout est bon, on supprime
+    db.delete(ticket)
+    db.commit()
+    
+    return Response(status_code=http_status.HTTP_204_NO_CONTENT)
+
+
+
 @app.post("/api/admin/tickets/{ticket_id}/assign", dependencies=[Depends(get_current_admin_user)])
 def assign_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
@@ -1722,70 +1820,93 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Password has been reset successfully."}
+# Dans backend/main.py
+# Dans backend/main.py
 
 @app.post("/api/chatbot/query", response_model=ChatResponse, dependencies=[Depends(get_current_user)])
-async def handle_chat_query(query: ChatQuery, user: User = Depends(get_current_user),db: Session = Depends(get_db)):
+async def handle_chat_query(query: ChatQuery, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role != 'premium':
         raise HTTPException(status_code=403, detail="Chatbot is a premium feature.")
-    
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Chatbot is not configured on the server.")
-# === LA MODIFICATION EST ICI ===
-    # On enregistre la question de l'utilisateur dans la base de données
-    new_log = ChatLog(user_id=user.id, question=query.question)
+
+    new_log = ChatLog(user_id=user.id, question=query.question.strip().lower())
     db.add(new_log)
     db.commit()
+
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro-latest')
         
         # === LA CORRECTION EST ICI ===
+        # On supprime la ligne en double
+        chat_session = model.start_chat(
+            history=[
+                {
+                    "role": "user",
+                    "parts": [
+                        """
+                        **System Instructions:**
+                        You are "FedIds Assist", an expert AI assistant for the "FedIds" security platform.
+                        Your tone is helpful, professional, and very concise.
+                        You MUST follow these rules:
+                        1.  **Be Brief:** Use short sentences. Use bullet points whenever possible. Do not write long paragraphs.
+                        2.  **Stay Focused:** Your knowledge is strictly limited to these topics:
+                            -   **Federated Learning (FL):** A privacy-first ML method where models train on devices without data leaving. Only model updates are shared.
+                            -   **Our Model:** A CNN-LSTM for detecting attack patterns in network data.
+                            -   **Threats We Detect:** Backdoor, DDoS, MITM, Port Scanning, Ransomware.
+                        3.  **Decline Other Topics:** If asked about anything else (e.g., "what is the weather?"), you MUST politely decline by saying: "My expertise is focused on the FedIds platform and IIoT security. I cannot answer questions on other topics."
+                        """
+                    ]
+                },
+                {
+                    "role": "model",
+                    "parts": ["Understood. I am FedIds Assist. How can I help you?"]
+                }
+            ]
+        )
         
-        # 1. Définir le contexte et les instructions
-        system_prompt = """
-        You are FedIds Assist, a specialized AI assistant for a Federated Intrusion Detection System (FedIds).
-        Your purpose is to help users understand cybersecurity threats in an Industrial IoT (IIoT) context.
-        Your knowledge is focused on these attacks: Backdoor, DDoS, MITM, Port Scanning, Ransomware.
-        Be concise and helpful. If asked about topics outside of IIoT security, politely decline.
-        """
-        
-        # 2. Construire l'historique pour l'API
-        messages_for_api = []
-        
-        # 3. Injecter les instructions dans le premier message de l'historique
-        # S'il n'y a pas d'historique, on crée le premier message avec le prompt
-        if not query.history:
-            first_question = f"{system_prompt}\n\nUSER QUESTION: {query.question}"
-            messages_for_api.append({"role": "user", "parts": [first_question]})
-        else:
-            # S'il y a un historique, on le reconstruit normalement
-            for message in query.history:
-                # On s'assure que le rôle est bien 'user' ou 'model'
-                role = "user" if message["role"] == "user" else "model"
-                messages_for_api.append({"role": role, "parts": [message["text"]]})
-            # Et on ajoute la nouvelle question de l'utilisateur
-            messages_for_api.append({"role": "user", "parts": [query.question]})
-        # On interroge l'API
-        response = await model.generate_content_async(messages_for_api)
+        response = await chat_session.send_message_async(query.question)
         
         return ChatResponse(answer=response.text)
 
     except Exception as e:
-        print(f"Gemini API Error: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while communicating with the AI assistant.")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Gemini API error: {e}")
+
 
 @app.get("/api/admin/chatbot/stats", response_model=List[ChatStat], dependencies=[Depends(get_current_admin_user)])
-def get_chatbot_stats(db: Session = Depends(get_db)):
-    """
-    Compte les occurrences de chaque question posée au chatbot
-    et renvoie les 10 plus fréquentes.
-    """
-    # On groupe par question, on compte, on ordonne par le compte, et on prend les 10 premières
-    stats = db.query(
-        ChatLog.question, 
-        func.count(ChatLog.question).label('count')
-    ).group_by(ChatLog.question).order_by(func.count(ChatLog.question).desc()).limit(10).all()
+async def get_chatbot_stats(db: Session = Depends(get_db)):
+    logs = db.query(ChatLog.question).all()
+    if not logs: return []
+
+    questions = [log.question for log in logs]
     
-    return stats
+    try:
+        # === ON UTILISE LE MODÈLE LE PLUS STABLE ===
+        model = genai.GenerativeModel('gemini-pro-latest')
+        
+        prompt = f"""
+        Analyze and categorize the following user questions into one of these topics: "IIoT Concepts", "Specific Attacks", "Greetings", or "Other".
+        Return the answer ONLY as a JSON list of strings. Example: ["Specific Attacks", "Greetings", "IIoT Concepts"].
+        
+        Questions: {json.dumps(questions)}
+        """
+        
+        response = await model.generate_content_async(prompt)
+        cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+        categories = json.loads(cleaned_response)
+        
+        category_counts = {}
+        for category in categories:
+            category_counts[category] = category_counts.get(category, 0) + 1
+            
+        stats = [{"question": category, "count": count} for category, count in category_counts.items()]
+        return sorted(stats, key=lambda x: x['count'], reverse=True)
+
+    except Exception as e:
+        print(f"Error during stats categorization: {e}")
+        # Fallback to raw stats
+        stats = db.query(ChatLog.question, func.count(ChatLog.question).label('count')).group_by(ChatLog.question).order_by(func.count(ChatLog.question).desc()).limit(10).all()
+        return stats
 # ------------------------------------------------------------
 # WebSockets routes
 # ------------------------------------------------------------

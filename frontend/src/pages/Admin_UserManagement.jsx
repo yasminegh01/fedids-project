@@ -1,12 +1,9 @@
 // frontend/src/pages/Admin_UserManagement.jsx
-
-import React, { useState, useEffect, useCallback,useMemo } from 'react';
-import apiClient from '../api/apiClient';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from "react-router-dom";
+import apiClient from '../api/apiClient';
 
-const API_BASE_URL = "http://127.0.0.1:8000";
-
-// Petit composant pour afficher un badge de statut coloré
+// --- Sous-composant : Badge de Statut ---
 const StatusBadge = ({ isActive }) => (
     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
         isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -14,13 +11,21 @@ const StatusBadge = ({ isActive }) => (
         {isActive ? 'Active' : 'Suspended'}
     </span>
 );
+
+// --- Composant Principal de la Page ---
 export default function AdminUserManagement() {
     const [users, setUsers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
-    const [searchTerm, setSearchTerm] = useState(''); // 
+    
+    // États pour les filtres et le tri
+    const [searchTerm, setSearchTerm] = useState('');
+    const [roleFilter, setRoleFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [sortBy, setSortBy] = useState('date_desc');
 
     const fetchUsers = useCallback(async () => {
+        setIsLoading(true);
         try {
             const response = await apiClient.get('/api/admin/users');
             setUsers(response.data);
@@ -30,58 +35,40 @@ export default function AdminUserManagement() {
             setIsLoading(false);
         }
     }, []);
-    const [roleFilter, setRoleFilter] = useState('all'); // 'all', 'premium', 'user'
-    const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'suspended'
-    const [sortBy, setSortBy] = useState('username_asc'); // 'username_asc', 'username_desc', 'date_asc', 'date_desc'
 
-    // Charger les données au premier rendu de la page
-     useEffect(() => {
-        apiClient.get('/api/admin/users')
-            .then(res => setUsers(res.data))
-            .finally(() => setIsLoading(false));
-    }, []);
+    useEffect(() => {
+        fetchUsers();
+    }, [fetchUsers]);
 
-    // Fonction pour gérer le clic sur le bouton de suspension/réactivation
     const handleToggleStatus = async (userId) => {
         if (window.confirm("Are you sure you want to change this user's status?")) {
             try {
                 await apiClient.put(`/api/admin/users/${userId}/status`);
-                // Après le succès, on rafraîchit la liste pour voir le changement
-                fetchUsers();
+                fetchUsers(); // Rafraîchir la liste pour voir le changement
             } catch (err) {
                 alert("Failed to update user status.");
             }
         }
     };
-// Filtrer les utilisateurs en fonction du terme de recherche
-    const filteredUsers = useMemo(() => {
-        if (!searchTerm) return users;
-        return users.filter(user =>
-            user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [users, searchTerm]);
-    
+
+    // Logique de filtrage et de tri combinée
     const processedUsers = useMemo(() => {
         let filtered = [...users];
 
-        // 1. Filtrage par recherche
         if (searchTerm) {
             filtered = filtered.filter(user =>
                 user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 user.email.toLowerCase().includes(searchTerm.toLowerCase())
             );
         }
-        // 2. Filtrage par rôle
         if (roleFilter !== 'all') {
             filtered = filtered.filter(user => user.role === roleFilter);
         }
-        // 3. Filtrage par statut
         if (statusFilter !== 'all') {
             const isActive = statusFilter === 'active';
             filtered = filtered.filter(user => user.is_active === isActive);
         }
-        // 4. Tri
+        
         filtered.sort((a, b) => {
             switch (sortBy) {
                 case 'username_asc': return a.username.localeCompare(b.username);
@@ -94,56 +81,49 @@ export default function AdminUserManagement() {
 
         return filtered;
     }, [users, searchTerm, roleFilter, statusFilter, sortBy]);
-    if (isLoading) return <div>Loading users...</div>;
-    if (error) return <div className="text-red-500">{error}</div>;
+
+    if (isLoading) return <div className="text-center p-10 text-text-secondary">Loading users...</div>;
+    if (error) return <div className="p-4 bg-red-100 text-red-800 rounded-md">{error}</div>;
+
     return (
     <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-gray-800">User Management</h1>
+        <h1 className="text-3xl font-bold text-text-primary">User Management</h1>
         
-        {/* === PANNEAU DE FILTRES ET DE RECHERCHE === */}
-        <div className="bg-white p-4 rounded-lg shadow-md grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+        <div className="bg-bg-primary p-4 rounded-lg shadow-md grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
             <input
                 type="text"
                 placeholder="Search by username or email..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="md:col-span-2 w-full p-2 border border-gray-300 rounded-md"
+                className="md:col-span-2 w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-primary rounded-md text-text-primary"
             />
-            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                <option value="all">All Roles</option>
-                <option value="premium">Premium</option>
-                <option value="user">User</option>
+            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-primary rounded-md text-text-primary">
+                <option value="all">All Roles</option><option value="premium">Premium</option><option value="user">User</option>
             </select>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                <option value="all">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-primary rounded-md text-text-primary">
+                <option value="all">All Statuses</option><option value="active">Active</option><option value="suspended">Suspended</option>
             </select>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                <option value="username_asc">Sort by Name (A-Z)</option>
-                <option value="username_desc">Sort by Name (Z-A)</option>
-                <option value="date_desc">Newest First</option>
-                <option value="date_asc">Oldest First</option>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-primary rounded-md text-text-primary">
+                <option value="date_desc">Newest First</option><option value="date_asc">Oldest First</option><option value="username_asc">Sort by Name (A-Z)</option><option value="username_desc">Sort by Name (Z-A)</option>
             </select>
         </div>
 
-        {/* === TABLEAU DES UTILISATEURS === */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="bg-bg-primary rounded-lg shadow-md overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-bg-secondary">
                         <tr className="text-left">
-                            <th className="p-3 font-semibold text-gray-600">User</th>
-                            <th className="p-3 font-semibold text-gray-600">Subscription</th>
-                            <th className="p-3 font-semibold text-gray-600">Devices (Prevention On)</th>
-                            <th className="p-3 font-semibold text-gray-600">Payments</th>
-                            <th className="p-3 font-semibold text-gray-600">Status</th>
-                            <th className="p-3 font-semibold text-gray-600">Actions</th>
+                            <th className="p-3 font-semibold text-text-secondary">User</th>
+                            <th className="p-3 font-semibold text-text-secondary">Subscription</th>
+                            <th className="p-3 font-semibold text-text-secondary">Devices (Prevention On)</th>
+                            <th className="p-3 font-semibold text-text-secondary">Payments</th>
+                            <th className="p-3 font-semibold text-text-secondary">Status</th>
+                            <th className="p-3 font-semibold text-text-secondary">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                         {processedUsers.map(user => (
-                            <tr key={user.id} className="hover:bg-gray-50">
+                            <tr key={user.id} className="hover:bg-bg-secondary">
                                 <td className="p-3 flex items-center gap-3 whitespace-nowrap">
                                     <img 
                                         src={user.profile_picture_url ? `http://127.0.0.1:8000${user.profile_picture_url}` : `https://ui-avatars.com/api/?name=${user.username}`} 
@@ -151,26 +131,26 @@ export default function AdminUserManagement() {
                                         alt="Profile"
                                     />
                                     <div>
-                                        <p className="font-bold text-gray-900">{user.username}</p>
-                                        <p className="text-xs text-gray-500">Joined: {new Date(user.created_at).toLocaleDateString()}</p>
+                                        <p className="font-bold text-text-primary">{user.username}</p>
+                                        <p className="text-xs text-text-secondary">Joined: {new Date(user.created_at).toLocaleDateString()}</p>
                                     </div>
                                 </td>
                                 <td className="p-3 whitespace-nowrap">
-                                    <p className="font-semibold capitalize">{user.role}</p>
+                                    <p className="font-semibold capitalize text-text-primary">{user.role}</p>
                                     {user.role === 'premium' && user.subscription_valid_until &&
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-text-secondary">
                                             Expires: {new Date(user.subscription_valid_until).toLocaleDateString()}
                                         </p>
                                     }
                                 </td>
                                 <td className="p-3 text-center">
-                                    <span className="font-bold">{user.device_count}</span>
-                                    <span className="text-green-600 font-semibold"> ({user.devices_with_prevention_on})</span>
+                                    <span className="font-bold text-text-primary">{user.device_count}</span>
+                                    <span className="text-green-500 font-semibold"> ({user.devices_with_prevention_on})</span>
                                 </td>
-                                <td className="p-3 text-center font-bold">{user.payment_count}</td>
+                                <td className="p-3 text-center font-bold text-text-primary">{user.payment_count}</td>
                                 <td className="p-3"><StatusBadge isActive={user.is_active} /></td>
                                 <td className="p-3 space-x-4 whitespace-nowrap">
-                                    <Link to={`/admin/users/${user.id}`} className="font-semibold text-blue-600 hover:underline">Details</Link>
+                                    <Link to={`/admin/users/${user.id}`} className="font-semibold text-accent hover:underline">Details</Link>
                                     <button onClick={() => handleToggleStatus(user.id)} className="font-semibold text-indigo-600 hover:underline">
                                         {user.is_active ? 'Suspend' : 'Reactivate'}
                                     </button>
@@ -180,6 +160,7 @@ export default function AdminUserManagement() {
                     </tbody>
                 </table>
             </div>
-               </div>
         </div>
-    );}
+    </div>
+    );
+}

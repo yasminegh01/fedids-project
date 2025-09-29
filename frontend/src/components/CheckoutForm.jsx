@@ -1,5 +1,4 @@
-// frontend/src/components/CheckoutForm.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 export default function CheckoutForm({ onPaymentSuccess }) {
@@ -7,7 +6,7 @@ export default function CheckoutForm({ onPaymentSuccess }) {
     const elements = useElements();
     const [message, setMessage] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [paymentStatus, setPaymentStatus] = useState(''); // 'succeeded', 'failed', ''
+    const [paymentStatus, setPaymentStatus] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -18,7 +17,7 @@ export default function CheckoutForm({ onPaymentSuccess }) {
 
         const { error, paymentIntent } = await stripe.confirmPayment({
             elements,
-            redirect: "if_required" // Ne redirige pas, on gère tout ici
+            redirect: "if_required"
         });
         
         if (error) {
@@ -27,7 +26,7 @@ export default function CheckoutForm({ onPaymentSuccess }) {
         } else if (paymentIntent && paymentIntent.status === 'succeeded') {
             setMessage("Payment Successful! Your account will be upgraded shortly.");
             setPaymentStatus('succeeded');
-            onPaymentSuccess(); // Notifier le parent que tout est OK
+            onPaymentSuccess();
         } else {
             setMessage("Payment is processing or has an unexpected status.");
         }
@@ -35,19 +34,29 @@ export default function CheckoutForm({ onPaymentSuccess }) {
         setIsLoading(false);
     };
 
-    // Le formulaire est désactivé APRÈS un paiement réussi pour éviter de le soumettre à nouveau.
     const isFormDisabled = isLoading || paymentStatus === 'succeeded';
 
     return (
         <form id="payment-form" onSubmit={handleSubmit}>
+            {/* Le composant PaymentElement de Stripe s'adapte automatiquement au thème */}
+            {/* que nous avons défini dans UserUpgradePage.jsx */}
             <PaymentElement id="payment-element" />
-            <button disabled={isFormDisabled} className="w-full mt-6 ...">
+            
+            {/* Le bouton utilise maintenant les couleurs du thème */}
+            <button 
+                disabled={isFormDisabled} 
+                className="w-full mt-6 px-6 py-3 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg shadow-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
                 <span>{isLoading ? "Processing..." : "Pay Now"}</span>
             </button>
             
-            {/* Afficher les messages de succès ou d'erreur */}
+            {/* Les messages de feedback utilisent les couleurs du thème */}
             {message && (
-                <div className={`mt-4 text-sm text-center font-semibold p-2 rounded ${paymentStatus === 'succeeded' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <div className={`mt-4 text-sm text-center font-semibold p-3 rounded-md ${
+                    paymentStatus === 'succeeded' 
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
+                        : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
+                }`}>
                     {message}
                 </div>
             )}

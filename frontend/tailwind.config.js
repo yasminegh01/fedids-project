@@ -1,14 +1,27 @@
 /** @type {import('tailwindcss').Config} */
-// frontend/tailwind.config.js
 export default {
-  darkMode: 'class', // Activer le mode sombre basé sur une classe CSS
-  content: ["./src/**/*.{js,jsx}"],
+  // On dit à Tailwind de chercher la classe "dark" sur l'élément <html>
+  darkMode: 'class', 
+  
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
+      // On définit nos couleurs sémantiques ici
       colors: {
-        'admin-primary': '#1E293B', // Bleu-gris très sombre
-        'admin-secondary': '#334155',
-        'admin-accent': '#4F46E5', // Indigo vif
+        // Pour le texte
+        'text-primary': 'var(--color-text-primary)',
+        'text-secondary': 'var(--color-text-secondary)',
+        
+        // Pour les arrière-plans
+        'bg-primary': 'var(--color-bg-primary)',
+        'bg-secondary': 'var(--color-bg-secondary)',
+        
+        // Pour les accents (boutons, liens, etc.)
+        'accent': 'var(--color-accent)',
+        'accent-hover': 'var(--color-accent-hover)',
       },
     },
   },

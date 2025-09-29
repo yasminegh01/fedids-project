@@ -93,33 +93,36 @@ class FedIdsStrategy(fl.server.strategy.FedAvg):
 
 # --- Main Execution Logic ---
 
-
 def main():
     parser = argparse.ArgumentParser(description="Flower Server for FedIds")
-    parser.add_argument("--num-clients", type=int, default=2, help="Minimum clients for training.")
+    parser.add_argument("--num-clients", type=int, default=1, help="Minimum clients for training.")  # 1 par défaut en dev
+    
     args = parser.parse_args()
     
     print(f"🚀 Starting Flower Server... (waiting for {args.num_clients} clients)")
-    
-    try:
-        # === LA CORRECTION EST ICI ===
-        # On s'assure qu'on utilise le bon nom de fichier et le bon message d'erreur
-        model = create_model()
-        model.load_weights("global_model.weights.h5") 
-        initial_params = fl.common.ndarrays_to_parameters(model.get_weights())
-        print("✅ Initial model weights loaded successfully.")
-    except Exception as e:
-        print(f"❌ Could not load initial model weights from 'global_model.weights.h5'. Error: {e}")
-        return
 
+    try:
+        model = create_model()
+        if os.path.exists("global_model.weights.h5"):
+            model.load_weights("global_model.weights.h5")
+            print("✅ Initial model weights loaded successfully.")
+        else:
+            # Première exécution : on crée et sauvegarde des poids initiaux
+            model.save_weights("global_model.weights.h5")
+            print("⚠️ No weights found. Saved fresh initialized weights.")
+        initial_params = fl.common.ndarrays_to_parameters(model.get_weights())
+    except Exception as e:
+        print(f"❌ Could not prepare initial model weights. Error: {e}")
+        return
+  
     strategy = FedIdsStrategy(
-        initial_parameters=initial_params,
+      initial_parameters=initial_params,
         min_fit_clients=args.num_clients,
         min_evaluate_clients=args.num_clients,
         min_available_clients=args.num_clients,
         evaluate_metrics_aggregation_fn=weighted_average,
     )
-    
+  
     print("Waiting 5s for FastAPI backend...")
     time.sleep(5)
     

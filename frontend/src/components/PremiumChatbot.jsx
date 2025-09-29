@@ -1,7 +1,7 @@
-// frontend/src/components/PremiumChatbot.jsx
-
 import React, { useState, useRef, useEffect } from 'react';
 import apiClient from '../api/apiClient';
+
+// Icône d'envoi
 
 // Icône d'envoi
 const SendIcon = () => (
@@ -15,7 +15,11 @@ const ChatMessage = ({ message }) => {
     const isModel = message.role === 'model';
     return (
         <div className={`flex ${isModel ? 'justify-start' : 'justify-end'}`}>
-            <div className={`max-w-lg px-4 py-2 rounded-2xl ${isModel ? 'bg-gray-200 text-gray-800' : 'bg-blue-600 text-white'}`}>
+            <div className={`max-w-lg px-4 py-2 rounded-2xl ${
+                isModel 
+                    ? 'bg-gray-700 text-gray-200' // Bulle du modèle
+                    : 'bg-indigo-600 text-white' // Bulle de l'utilisateur
+            }`}>
                 <p className="text-sm">{message.text}</p>
             </div>
         </div>
@@ -31,7 +35,6 @@ export default function PremiumChatbot() {
     const [isLoading, setIsLoading] = useState(false);
     const chatContainerRef = useRef(null);
 
-    // Fait défiler automatiquement vers le bas lorsque de nouveaux messages arrivent
     useEffect(() => {
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -64,11 +67,14 @@ export default function PremiumChatbot() {
         }
     };
 
+
+
     return (
-        <div className="bg-white rounded-lg shadow-md h-full flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-                <h3 className="font-bold text-lg text-gray-800">FedIds AI Assistant</h3>
-                <p className="text-xs text-gray-500">Premium Feature</p>
+        // Fond sombre, texte clair
+        <div className="bg-gray-800 rounded-lg shadow-md h-full flex flex-col">
+            <div className="p-4 border-b border-gray-700">
+                <h3 className="font-bold text-lg text-white">FedIds AI Assistant</h3>
+                <p className="text-xs text-gray-400">Premium Feature</p>
             </div>
 
             {/* Conteneur des messages */}
@@ -78,7 +84,7 @@ export default function PremiumChatbot() {
                 ))}
                 {isLoading && (
                     <div className="flex justify-start">
-                        <div className="max-w-lg px-4 py-2 rounded-2xl bg-gray-200 text-gray-500 animate-pulse">
+                        <div className="max-w-lg px-4 py-2 rounded-2xl bg-gray-700 text-gray-400 animate-pulse">
                             Typing...
                         </div>
                     </div>
@@ -86,23 +92,23 @@ export default function PremiumChatbot() {
             </div>
 
             {/* Zone de saisie */}
-            <div className="p-4 border-t border-gray-200">
+            <div className="p-4 border-t border-gray-700">
                 <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                     <input
                         type="text"
                         value={userInput}
                         onChange={(e) => setUserInput(e.target.value)}
                         placeholder="Ask about an attack type..."
-                        className="flex-1 w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 w-full px-4 py-2 border border-gray-600 bg-gray-700 text-white rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         disabled={isLoading}
                     />
                     <button 
-                        type="submit" 
-                        className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-400"
-                        disabled={isLoading}
-                    >
-                        <SendIcon />
-                    </button>
+            type="submit" 
+            className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:bg-gray-500 transition-colors"
+            disabled={isLoading}
+        >
+            <SendIcon />
+        </button>
                 </form>
             </div>
         </div>

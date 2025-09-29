@@ -2,6 +2,8 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
+import ThemeToggle from '../components/ThemeToggle';
+
 import { 
     ChartBarIcon, 
     UsersIcon, 
@@ -9,20 +11,31 @@ import {
     ShieldCheckIcon, 
     DocumentChartBarIcon,
     LifebuoyIcon,
-    ArrowLeftOnRectangleIcon // Pour le logout
+    ArrowLeftOnRectangleIcon,
+    ChatBubbleLeftRightIcon // Ajout de l'icône pour le chatbot
 } from '@heroicons/react/24/outline';
+
 export default function AdminDashboardLayout() {
     const { logout } = useAuth();
+
+    // La classe de lien utilise maintenant les couleurs sémantiques
     const navLinkClass = ({ isActive }) => 
         `flex items-center gap-3 px-4 py-2 rounded-md font-semibold text-sm transition-colors ${
-            isActive ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            isActive 
+                ? 'bg-accent text-white' // Couleur d'accentuation pour l'élément actif
+                : 'text-text-secondary hover:bg-bg-secondary hover:text-text-primary'
         }`;
         
-
     return (
-       <div className="flex h-screen bg-gray-100">
-            <aside className="w-64 bg-gray-800 text-white flex flex-col p-4">
-                <div className="p-2 mb-8"><Logo /></div>
+       // Le fond principal utilise bg-bg-secondary
+       <div className="flex h-screen bg-bg-secondary">
+            
+            {/* La sidebar utilise bg-bg-primary */}
+            <aside className="w-72 bg-bg-primary text-text-primary flex flex-col p-4 shadow-lg">
+                
+                <div className="p-2 mb-8">
+                    <Logo />
+                </div>
                 
                 <nav className="flex-grow space-y-2">
                     <NavLink to="/admin/overview" className={navLinkClass}>
@@ -40,20 +53,20 @@ export default function AdminDashboardLayout() {
                     <NavLink to="/admin/federated-learning" className={navLinkClass}>
                         <CogIcon className="h-5 w-5" /> FL Control Center
                     </NavLink>
-                     {/* === NOUVEAU LIEN TICKETS === */}
                     <NavLink to="/admin/tickets" className={navLinkClass}>
-                        <LifebuoyIcon className="h-5 w-5" />
-                        Support Tickets
+                        <LifebuoyIcon className="h-5 w-5" /> Support Tickets
                     </NavLink>
                     <NavLink to="/admin/chatbot-analytics" className={navLinkClass}>
-            Chatbot Analytics
-          </NavLink>
+                        <ChatBubbleLeftRightIcon className="h-5 w-5" /> Chatbot Analytics
+                    </NavLink>
                 </nav>
-            
-                <div className="pt-4 mt-auto border-t border-gray-700">
+
+                {/* La bordure s'adapte au thème sombre/clair */}
+                <div className="pt-4 mt-auto border-t border-gray-200 dark:border-gray-700 space-y-3">
+                    <ThemeToggle />
                     <button 
                         onClick={logout} 
-                        className="w-full flex items-center gap-3 px-4 py-2 rounded-md font-semibold text-sm text-red-400 hover:bg-red-500 hover:text-white"
+                        className="w-full flex items-center gap-3 px-4 py-2 rounded-md font-semibold text-sm text-red-500 hover:bg-red-500 hover:text-white transition-colors"
                     >
                         <ArrowLeftOnRectangleIcon className="h-5 w-5" />
                         Logout

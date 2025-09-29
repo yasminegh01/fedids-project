@@ -1,21 +1,21 @@
-# backend/requirements.txt
-flwr[simulation]
-tensorflow
-numpy
-pandas
-scikit-learn
 fastapi
 uvicorn[standard]
-SQLAlchemy
+sqlalchemy
+pydantic
+python-dotenv
 passlib[bcrypt]
 python-jose[cryptography]
-python-dotenv
-requests
-apscheduler
+google-generativeai
+geoip2
+httpx
+python-multipart
+fastapi-mail
+authlib
+stripe
+pandas
+numpy
+scikit-learn
 matplotlib
 seaborn
-httpx  
-itsdangerous
-authlib
-geoip2
-stripe
+tensorflow==2.15.0 # La version compatible
+flwr==1.7.0

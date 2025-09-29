@@ -1,22 +1,16 @@
-// frontend/src/pages/Admin_ClientManagement.jsx
-
 import React, { useState, useEffect, useCallback } from 'react';
 import apiClient from '../api/apiClient';
 import { Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS, CategoryScale, LinearScale, PointElement,
-  LineElement, Title, Tooltip, Legend,
-} from 'chart.js';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
+import { useTheme } from '../context/ThemeContext'; // <<< IMPORTER LE HOOK DE THÈME
 
-// Enregistrement des composants ChartJS
-ChartJS.register(
-  CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend
-);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 // --- Sous-composant : Modale d'Historique avec Graphique ---
 const HistoryModal = ({ client, closeModal }) => {
     const [history, setHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const { theme } = useTheme(); // <<< RÉCUPÉRER LE THÈME ACTUEL
 
     useEffect(() => {
         if (client) {
@@ -33,37 +27,55 @@ const HistoryModal = ({ client, closeModal }) => {
             {
                 label: 'Accuracy',
                 data: history.map(h => h.accuracy),
-                borderColor: 'rgb(59, 130, 246)',
-                backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                borderColor: theme === 'light' ? 'rgb(34, 197, 94)' : 'rgb(74, 222, 128)',
+                backgroundColor: theme === 'light' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(74, 222, 128, 0.2)',
                 yAxisID: 'y_accuracy',
+                tension: 0.1,
             },
             {
                 label: 'Loss',
                 data: history.map(h => h.loss),
-                borderColor: 'rgb(239, 68, 68)',
-                backgroundColor: 'rgba(239, 68, 68, 0.5)',
+                borderColor: theme === 'light' ? 'rgb(239, 68, 68)' : 'rgb(248, 113, 113)',
+                backgroundColor: theme === 'light' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(248, 113, 113, 0.2)',
                 yAxisID: 'y_loss',
+                tension: 0.1,
             }
         ]
     };
 
     const chartOptions = {
         responsive: true,
+        interaction: { mode: 'index', intersect: false },
         scales: {
-            y_accuracy: { type: 'linear', display: true, position: 'left', min: 0, max: 1, ticks: { callback: value => `${(value * 100).toFixed(0)}%` } },
-            y_loss: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } }
+            y_accuracy: {
+                type: 'linear', display: true, position: 'left', min: 0, max: 1,
+                ticks: { callback: value => `${(value * 100).toFixed(0)}%`, color: theme === 'light' ? '#4B5563' : '#D1D5DB' },
+                grid: { color: theme === 'light' ? '#E5E7EB' : '#374151' }
+            },
+            y_loss: {
+                type: 'linear', display: true, position: 'right',
+                ticks: { color: theme === 'light' ? '#4B5563' : '#D1D5DB' },
+                grid: { drawOnChartArea: false }
+            },
+            x: {
+                ticks: { color: theme === 'light' ? '#4B5563' : '#D1D5DB' },
+                grid: { display: false }
+            }
+        },
+        plugins: {
+            legend: { labels: { color: theme === 'light' ? '#111827' : '#F9FAFB' } }
         }
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-3xl">
+            <div className="bg-bg-primary p-6 rounded-lg shadow-xl w-full max-w-3xl">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Performance History for: {client.name}</h3>
-                    <button onClick={closeModal} className="text-gray-500 hover:text-red-600 text-2xl">&times;</button>
+                    <h3 className="text-xl font-bold text-text-primary">Performance History: {client.name}</h3>
+                    <button onClick={closeModal} className="text-text-secondary hover:text-red-500 text-2xl">&times;</button>
                 </div>
                 <div className="h-96">
-                    {isLoading ? <p className="p-4 text-center">Loading history...</p> : <Line data={chartData} options={chartOptions} />}
+                    {isLoading ? <p className="p-4 text-center text-text-secondary">Loading history...</p> : <Line data={chartData} options={chartOptions} />}
                 </div>
             </div>
         </div>
@@ -79,56 +91,55 @@ const StatusBadge = ({ status }) => {
     return <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${styles[status] || 'bg-gray-100'}`}>{status}</span>;
 };
 
+
 // --- Composant Principal de la Page ---
 export default function AdminClientManagement() {
     const [clients, setClients] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedClient, setSelectedClient] = useState(null);
+const fetchClients = useCallback(() => {
+    setIsLoading(true);
+    apiClient.get('/api/admin/clients')
+        .then(res => setClients(res.data))
+        .catch(err => console.error("Failed to fetch clients", err))
+        .finally(() => setIsLoading(false));
+}, []);
 
-    const fetchClients = useCallback(() => {
-        setIsLoading(true);
-        apiClient.get('/api/admin/clients')
-            .then(res => setClients(res.data))
-            .catch(err => console.error("Failed to fetch clients", err))
-            .finally(() => setIsLoading(false));
-    }, []);
-
-    useEffect(() => { fetchClients(); }, [fetchClients]);
-
+useEffect(() => { fetchClients(); }, [fetchClients]);
     return (
-        <div>
+        <div className="space-y-6">
             {selectedClient && <HistoryModal client={selectedClient} closeModal={() => setSelectedClient(null)} />}
 
-            <h1 className="text-3xl font-bold text-gray-800">FL Client Management</h1>
-            <p className="text-gray-600 mt-1">View the status and performance of each client in the federated network.</p>
+            <h1 className="text-3xl font-bold text-text-primary">FL Client Management</h1>
+            <p className="text-text-secondary mt-1">View the status and performance of each client in the federated network.</p>
             
-            <div className="bg-white rounded-lg shadow-md overflow-hidden mt-6">
+            <div className="bg-bg-primary rounded-lg shadow-md overflow-hidden">
                 <div className="overflow-x-auto">
-                    {isLoading ? <p className="p-8 text-center">Loading clients...</p> : (
+                    {isLoading ? <p className="p-8 text-center text-text-secondary">Loading clients...</p> : (
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50">
+                            <thead className="bg-bg-secondary">
                                 <tr className="text-left">
-                                    <th className="p-3">Client Name</th>
-                                    <th className="p-3">Flower ID</th>
-                                    <th className="p-3">Owner</th>
-                                    <th className="p-3">Status</th>
-                                    <th className="p-3">Registered On</th>
-                                    <th className="p-3">Actions</th>
+                                    <th className="p-3 font-semibold text-text-secondary">Client Name</th>
+                                    <th className="p-3 font-semibold text-text-secondary">Flower ID</th>
+                                    <th className="p-3 font-semibold text-text-secondary">Owner</th>
+                                    <th className="p-3 font-semibold text-text-secondary">Status</th>
+                                    <th className="p-3 font-semibold text-text-secondary">Registered On</th>
+                                    <th className="p-3 font-semibold text-text-secondary">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                 {clients.map(client => (
-                                    <tr key={client.id} className="hover:bg-gray-50">
-                                        <td className="p-3 font-semibold">{client.name}</td>
-                                        <td className="p-3 font-mono text-xs">{client.flower_id}</td>
+                                    <tr key={client.id} className="hover:bg-bg-secondary">
+                                        <td className="p-3 font-semibold text-text-primary">{client.name}</td>
+                                        <td className="p-3 font-mono text-xs text-text-secondary">{client.flower_id}</td>
                                         <td className="p-3">
-                                            <p className="font-semibold">{client.owner_username || 'N/A'}</p>
-                                            <p className="text-xs text-gray-500">{client.owner_email || 'N/A'}</p>
+                                            <p className="font-semibold text-text-primary">{client.owner_username || 'N/A'}</p>
+                                            <p className="text-xs text-text-secondary">{client.owner_email || 'N/A'}</p>
                                         </td>
                                         <td className="p-3"><StatusBadge status={client.status} /></td>
-                                        <td className="p-3">{new Date(client.registered_at).toLocaleDateString()}</td>
+                                        <td className="p-3 text-text-secondary">{new Date(client.registered_at).toLocaleDateString()}</td>
                                         <td className="p-3">
-                                            <button onClick={() => setSelectedClient(client)} className="font-semibold text-blue-600 hover:underline">
+                                            <button onClick={() => setSelectedClient(client)} className="font-semibold text-accent hover:underline">
                                                 View Performance
                                             </button>
                                         </td>
