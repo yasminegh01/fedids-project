@@ -190,16 +190,22 @@ class User(Base):
 
 class Device(Base):
     __tablename__ = "devices"
-    id = Column(Integer, primary_key=True)
-    
-    # --- NOUVEAUX CHAMPS ---
-    category = Column(String, nullable=False, default="default")
-    name = Column(String, nullable=False) # Ex: "Imprimante"
-    # On ajoute une contrainte d'unicité pour le couple (owner_id, category, name)
-    __table_args__ = (UniqueConstraint('owner_id', 'category', 'name', name='_owner_category_name_uc'),)
-
+  
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
     api_key = Column(String, unique=True, default=lambda: uuid.uuid4().hex)
     owner_id = Column(Integer, ForeignKey("users.id"))
+    
+    # === LES MODIFICATIONS SONT ICI ===
+    description = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    mac_address = Column(String, nullable=True)
+    
+    # On lie l'appareil à une catégorie
+    category_id = Column(Integer, ForeignKey("device_categories.id"), nullable=True)
+    category = relationship("DeviceCategory")
+    # === FIN DES MODIFICATIONS ===
+    
     owner = relationship("User", back_populates="devices")
     prevention_enabled = Column(Boolean, default=False)
     registration_token = Column(String, unique=True, nullable=True)
@@ -302,6 +308,16 @@ class ChatLog(Base):
     
     user = relationship("User")
 def get_db():db=SessionLocal();yield db;db.close()
+
+
+class DeviceCategory(Base):
+    __tablename__ = "device_categories"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Relation pour que l'on puisse facilement accéder à l'utilisateur
+    owner = relationship("User")
 # ------------------------------------------------------------
 # SECTION 5: Pydantic models (schemas)
 # ------------------------------------------------------------
@@ -352,10 +368,33 @@ class UserPublic(BaseModel):
         from_attributes = True
 class UserAdminView(UserPublic):device_count:int;devices_with_prevention_on:int;payment_count:int
 class Token(BaseModel):access_token:str;token_type:str;user:UserPublic
-class DeviceCreate(BaseModel):name:str
+
+class DeviceCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    ip_address: Optional[str] = None
+    mac_address: Optional[str] = None
+    category_id: Optional[int] = None
+
+class DeviceCategoryCreate(BaseModel):
+    name: str
+
+class DeviceCategoryPublic(DeviceCategoryCreate):
+    id: int
+    class Config: from_attributes = True
+
 class DevicePublic(BaseModel):
-    id:int;name:str;api_key:str;prevention_enabled:bool;registration_token:Optional[str]=None
-    model_config=ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    api_key: str
+    registration_token: str  # <-- Ajouté
+
+    prevention_enabled: bool
+    description: Optional[str] = None
+    ip_address: Optional[str] = None
+    mac_address: Optional[str] = None
+    category: Optional[DeviceCategoryPublic] = None # On inclut l'objet catégorie complet
+    class Config: from_attributes = True
 
 class DeviceStatusPublic(BaseModel):
     last_seen: Optional[datetime]
@@ -513,6 +552,12 @@ class ChatStat(BaseModel):
 class TicketCategoryStat(BaseModel):
     category: str
     count: int
+
+
+
+
+
+
 # ------------------------------------------------------------
 # SECTION 6: Helpers (auth, utils)
 # ------------------------------------------------------------
@@ -824,67 +869,79 @@ def upgrade_user_to_premium(current_user: User = Depends(get_current_user), db: 
     
     return UserPublic.model_validate(user)
 
-
-# Devices
+@app.post("/api/devices/complete-installation/{reg_token}", status_code=200)
+def complete_installation(reg_token: str, db: Session = Depends(get_db)):
+    """
+    Invalide un token d'enregistrement une fois que l'installation est terminée.
+    """
+    device = db.query(Device).filter(Device.registration_token == reg_token).first()
+    if device:
+        device.registration_token = None
+        db.commit()
+    return {"message": "Installation completed and token invalidated."}
 @app.post("/api/devices/register", response_model=DevicePublic)
 def register_device(device_in: DeviceCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    new_device = Device(name=device_in.name, owner_id=user.id, registration_token=secrets.token_hex(16))
+    existing_device = db.query(Device).filter(Device.name == device_in.name, Device.owner_id == user.id).first()
+    if existing_device:
+        raise HTTPException(status_code=400, detail=f"A device with the name '{device_in.name}' already exists.")
+
+    new_device = Device(
+        **device_in.model_dump(), 
+        owner_id=user.id,
+        registration_token=secrets.token_hex(16)
+    )
     db.add(new_device)
     db.commit()
     db.refresh(new_device)
+
     return new_device
+
+    
+    # On renvoie l'objet. Pydantic s'occupera de le convertir.
+    return new_device
+
+# Remplacez votre fonction get_install_script par celle-ci :
+# Dans backend/main.py
 
 @app.get("/api/devices/install/{reg_token}", response_class=PlainTextResponse)
 def get_install_script(reg_token: str, db: Session = Depends(get_db)):
+    """
+    Trouve un appareil par son token, l'invalide, et renvoie le script d'installation.
+    """
     device = db.query(Device).filter(Device.registration_token == reg_token).first()
     if not device:
         return "echo '❌ Error: Invalid or expired registration token.'; exit 1"
 
+    # === LA CORRECTION EST ICI ===
+    # On récupère la VRAIE clé API
     api_key = device.api_key
+    
+    # On invalide le token d'enregistrement dès qu'il est utilisé.
     device.registration_token = None
     db.commit()
 
     github_client_repo_url = "https://github.com/yasminegh01/fedids-iiot-client.git"
 
-    # === LE NOUVEAU SCRIPT "EN LIGNE" ===
     script_content = f"""#!/bin/bash
-set -e # Arrêter le script si une commande échoue
-
+set -e
 echo "--- FedIds IIoT Online Installer ---"
-
-# 1. Installer les dépendances système (Python 3.11, git, etc.)
 echo "➡️ Step 1/4: Installing system dependencies..."
-sudo apt-get update
-sudo apt-get install -y git python3.11 python3.11-venv libasound2-dev
-
-# 2. Cloner le code source du client
+sudo apt-get update && sudo apt-get install -y git python3.11 python3.11-venv libasound2-dev
 echo "➡️ Step 2/4: Downloading client source code..."
 git clone {github_client_repo_url} iiot_client
 cd iiot_client
-
-# 3. Créer l'environnement virtuel et installer les paquets (en ligne)
-echo "➡️ Step 3/4: Creating venv and installing packages (this will take time)..."
+echo "➡️ Step 3/4: Creating venv and installing packages..."
 python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-# 4. Configurer l'appareil
 echo "➡️ Step 4/4: Configuring device..."
 echo "[device]" > config.ini
+# On écrit la VRAIE clé API dans le fichier de configuration
 echo "api_key = {api_key}" >> config.ini
-
 echo ""
 echo "🚀 Installation Complete!"
-echo "To start the client, navigate to the 'iiot_client' directory and run:"
-echo "   source venv/bin/activate"
-echo "   python client.py --client-id 0 --config config.ini --server-ip <YOUR_SERVER_IP>"
 """
     return script_content
-
-
-
-
-
 @app.get("/api/devices/my-devices-with-status", response_model=List[DeviceWithStatus])
 def get_my_devices_with_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     five_min = datetime.utcnow() - timedelta(minutes=5)
@@ -952,6 +1009,22 @@ def delete_device(
     db.delete(device_to_delete)
     db.commit()
     return Response(status_code=http_status.HTTP_204_NO_CONTENT)
+
+
+
+@app.get("/api/device-categories", response_model=List[DeviceCategoryPublic])
+def get_user_categories(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(DeviceCategory).filter(DeviceCategory.owner_id == current_user.id).all()
+
+@app.post("/api/device-categories", response_model=DeviceCategoryPublic, status_code=201)
+def create_category(category_data: DeviceCategoryCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    new_category = DeviceCategory(**category_data.model_dump(), owner_id=current_user.id)
+    db.add(new_category)
+    db.commit()
+    db.refresh(new_category)
+    return new_category
+
+
 
 
 # Dashboard / attacks

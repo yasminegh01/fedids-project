@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import apiClient from '../api/apiClient';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import Logo from '../components/Logo'; // On importe le logo
 
-// Composant pour l'icône Google (réutilisé)
 const GoogleIcon = () => (
     <svg className="w-5 h-5 mr-3" viewBox="0 0 48 48">
         <path fill="#4285F4" d="M24 9.5c3.23 0 5.45 1.34 6.7 2.5l5.25-5.25C32.4 3.4 28.5 2 24 2 15.3 2 8.2 6.8 5.4 13.2l6.2 4.8C13 14 18.2 9.5 24 9.5z" />
@@ -25,16 +25,16 @@ export default function SignUpPage() {
         company: '',
         country: ''
     });
-    
-    
+
     const [showPassword, setShowPassword] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+
     const handleInputChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-const handleSignUp = async (e) => {
+    const handleSignUp = async (e) => {
         e.preventDefault();
         setIsLoading(true);
         setErrorMsg('');
@@ -48,58 +48,77 @@ const handleSignUp = async (e) => {
         }
     };
 
-
     const handleGoogleLogin = () => {
         window.location.href = 'http://127.0.0.1:8000/api/auth/google';
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Create Your Account</h2>
-                {errorMsg && <p className="text-center text-red-500 bg-red-100 p-3 rounded-md mb-4">{errorMsg}</p>}
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+            <div className="w-full max-w-md">
                 
-                <form onSubmit={handleSignUp} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="full_name" type="text" placeholder="Full Name" value={formData.full_name} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required />
-                        <input name="username" type="text" placeholder="Username" value={formData.username} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required />
+                {/* Logo et Titre */}
+                <div className="text-center mb-8">
+                    <div className="inline-block mb-4">
+                        <Logo />
                     </div>
-                    <input name="email" type="email" placeholder="Email Address" value={formData.email} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required />
-                    <div className="relative">
-                        <input name="password" type={showPassword ? "text" : "password"} placeholder="Password (min. 8 characters)" value={formData.password} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" required minLength="8"/>
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500">
-                            {showPassword ? <EyeSlashIcon className="h-5 w-5"/> : <EyeIcon className="h-5 w-5"/>}
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="company" type="text" placeholder="Company (Optional)" value={formData.company} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
-                        <input name="country" type="text" placeholder="Country (Optional)" value={formData.country} onChange={handleInputChange} className="w-full p-3 border rounded-lg shadow-sm" />
-                    </div>
-                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400" disabled={isLoading}>
-                        {isLoading ? 'Creating...' : 'Create Account'}
-                    </button>
-                </form>
-                
-                {/* --- CETTE PARTIE ÉTAIT MANQUANTE --- */}
-                <div className="relative my-6">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300"/></div>
-                    <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">Or continue with</span></div>
+                    <h2 className="text-3xl font-bold text-gray-900">Create an Account</h2>
+                    <p className="text-gray-500 mt-2">Join FedIds to secure your IIoT network.</p>
                 </div>
 
-                <div>
-                    <button 
-                        type="button" 
-                        onClick={handleGoogleLogin}
-                        className="w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-md"
-                    >
-                        <GoogleIcon />
-                        Continue with Google
+                <form onSubmit={handleSignUp} className="bg-white p-8 rounded-xl shadow-lg space-y-5">
+                    
+                    {errorMsg && (
+                        <p className="text-center text-red-600 bg-red-100 p-3 rounded-md text-sm">
+                            {errorMsg}
+                        </p>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-gray-700 mb-1 font-semibold text-sm">Full Name*</label>
+                            <input name="full_name" type="text" value={formData.full_name} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required />
+                        </div>
+                        <div>
+                            <label className="block text-gray-700 mb-1 font-semibold text-sm">Username*</label>
+                            <input name="username" type="text" value={formData.username} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-gray-700 mb-1 font-semibold text-sm">Email Address*</label>
+                        <input name="email" type="email" value={formData.email} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required />
+                    </div>
+
+                    <div>
+                        <label className="block text-gray-700 mb-1 font-semibold text-sm">Password*</label>
+                        <div className="relative">
+                            <input name="password" type={showPassword ? "text" : "password"} placeholder="Min. 8 characters" value={formData.password} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" required minLength="8" />
+                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-blue-600">
+                                {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-blue-300" disabled={isLoading}>
+                        {isLoading ? 'Creating Account...' : 'Create Account'}
                     </button>
-                </div>
-                {/* --- FIN DE LA PARTIE MANQUANTE --- */}
-                
-                <p className="text-center mt-6 text-sm">
-                    Already have an account? <Link to="/login" className="text-blue-600 hover:underline">Login</Link>
+
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300" /></div>
+                        <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">Or</span></div>
+                    </div>
+
+                    <button type="button" onClick={handleGoogleLogin} className="w-full flex items-center justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-800 bg-white hover:bg-gray-50 transition-colors">
+                        <GoogleIcon />
+                        Sign Up with Google
+                    </button>
+                </form>
+
+                <p className="text-center mt-8 text-sm text-gray-600">
+                    Already have an account?{' '}
+                    <Link to="/login" className="text-blue-600 hover:underline font-semibold">
+                        Sign In
+                    </Link>
                 </p>
             </div>
         </div>
