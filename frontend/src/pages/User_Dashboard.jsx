@@ -17,19 +17,35 @@ export default function UserDashboard() {
     const { user } = useAuth();
     const [stats, setStats] = useState(null);
     const [isHistoryOpen, setHistoryOpen] = useState(false);
-
+ const [attacks, setAttacks] = useState([]);
     const { messages: attackMessages, status: attackStatus } = useWebSocket('/ws/attacks');
 
     useEffect(() => {
+        apiClient.get('/api/attacks/history')
+            .then(res => {
+                setAttacks(res.data); // On remplit la liste avec les attaques existantes
+            })
+            .catch(err => console.error("Failed to load initial attack history:", err))
         apiClient.get('/api/dashboard/stats')
             .then(res => setStats(res.data))
             .catch(err => console.error("Failed to load dashboard stats:", err));
     }, []);
 
+    
+        // Si de nouveaux messages arrivent, on les ajoute au début de la liste existante
+        useEffect(() => {
+        // On utilise le bon nom de variable : 'attackMessages'
+        if (attackMessages.length > 0) {
+            // On ajoute les nouvelles attaques au début de la liste existante
+            setAttacks(prevAttacks => [...attackMessages, ...prevAttacks]);
+        }
+    }, [attackMessages]); // Se déclenche uniquement quand `newAttackMessages` change
+
+    // === FIN DE LA CORRECTION ===
+
     if (!user || !stats) {
         return <div className="text-center p-10 text-text-secondary">Loading Dashboard...</div>;
     }
-
     return (
         <div className="space-y-8">
             <AttackHistoryModal isOpen={isHistoryOpen} onClose={() => setHistoryOpen(false)} />

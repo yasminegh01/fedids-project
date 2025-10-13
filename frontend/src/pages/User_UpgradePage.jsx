@@ -74,7 +74,7 @@ const onPaymentSuccess = async () => {
         <div className="bg-bg-primary rounded-lg shadow-xl max-w-lg mx-auto p-8">
             <h1 className="text-3xl font-bold text-center text-text-primary">Go Premium</h1>
             <div className="text-center my-6">
-                <p className="text-5xl font-extrabold text-text-primary">500 DZD</p>
+                <p className="text-5xl font-extrabold text-text-primary">100 DT</p>
                 <p className="text-text-secondary">for 3 months</p>
             </div>
 

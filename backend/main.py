@@ -91,7 +91,7 @@ import sys
 from typing import List, Optional, Dict, Tuple # <<< Assurez-vous que Tuple est importé
 from sqlalchemy.orm import joinedload
 import google.generativeai as genai
-
+import geoip2.database
 # ------------------------------------------------------------
 # SECTION 2: Global configuration
 # ------------------------------------------------------------
@@ -101,6 +101,17 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-dev-key")
 ALGORITHM = "HS256"
 GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "geoip_db/GeoLite2-City.mmdb")
+try:
+    print(f"Attempting to load GeoIP database from: {GEOIP_DB_PATH}")
+    geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
+    print("✅ GeoIP database loaded successfully.")
+except FileNotFoundError:
+    geoip_reader = None
+    print(f"❌ FATAL ERROR: GeoIP database not found at '{GEOIP_DB_PATH}'. Geolocation will be disabled.")
+    print("   -> Make sure you have downloaded the file and placed it in the correct directory.")
+except Exception as e:
+    geoip_reader = None
+    print(f"❌ FATAL ERROR: Failed to load GeoIP database. Error: {e}")
 PREMIUM_PLAN_PRICE = int(os.getenv("PREMIUM_PLAN_PRICE", "200"))
 FRONTEND_BASE = os.getenv("FRONTEND_BASE", "http://localhost:5173")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -142,7 +153,6 @@ except Exception:
 
 
 
-FLOWER_PROCESS = None
 
 # ------------------------------------------------------------
 # SECTION 3: Database setup
@@ -186,8 +196,6 @@ class User(Base):
     tickets = relationship("Ticket", foreign_keys="[Ticket.user_id]", back_populates="user")
 
 
-
-
 class Device(Base):
     __tablename__ = "devices"
   
@@ -209,8 +217,11 @@ class Device(Base):
     owner = relationship("User", back_populates="devices")
     prevention_enabled = Column(Boolean, default=False)
     registration_token = Column(String, unique=True, nullable=True)
-
-
+    status_records = relationship(
+        "DeviceStatus",
+        back_populates="device",
+        cascade="all, delete-orphan"
+    )
 
 class DeviceStatus(Base):
     __tablename__ = "device_status"
@@ -218,10 +229,30 @@ class DeviceStatus(Base):
     device_api_key = Column(String, ForeignKey("devices.api_key"), unique=True)
     last_seen = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="offline")
+    device = relationship("Device", back_populates="status_records")
+
+
 
 
 class AttackLog(Base):
-    __tablename__="attack_logs";id=Column(Integer,primary_key=True);timestamp=Column(DateTime,default=datetime.utcnow);source_ip=Column(String);attack_type=Column(String);confidence=Column(Float);latitude=Column(Float,nullable=True);longitude=Column(Float,nullable=True);city=Column(String,nullable=True);country=Column(String,nullable=True)
+    __tablename__ = "attack_logs"
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    source_ip = Column(String)
+    attack_type = Column(String)
+    confidence = Column(Float)
+    
+    # === LA MODIFICATION EST ICI ===
+    # On lie l'attaque à un appareil via sa clé API.
+    # On ne met pas de ForeignKey pour plus de flexibilité (un appareil peut être supprimé
+    # mais on veut garder son historique d'attaques).
+    device_api_key = Column(String, index=True, nullable=True)
+    
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    city = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+
 
 class Client(Base):
     __tablename__ = "clients"
@@ -232,7 +263,8 @@ class Client(Base):
     notes = Column(Text, nullable=True)
     registered_at = Column(DateTime, default=datetime.utcnow)
     history_records = relationship("ClientHistory", back_populates="client", cascade="all, delete-orphan")
-
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    owner = relationship("User")
 
 class ClientHistory(Base):
     __tablename__="client_history";id=Column(Integer,primary_key=True);client_id=Column(Integer,ForeignKey("clients.id"));server_round=Column(Integer);accuracy=Column(Float);loss=Column(Float);timestamp=Column(DateTime,default=datetime.utcnow);client=relationship("Client",back_populates="history_records")
@@ -318,6 +350,24 @@ class DeviceCategory(Base):
     
     # Relation pour que l'on puisse facilement accéder à l'utilisateur
     owner = relationship("User")
+
+
+
+class PreventionLog(Base):
+    __tablename__ = "prevention_logs"
+    id = Column(Integer, primary_key=True)
+    
+    # === LA CORRECTION EST ICI ===
+    # Le nom de la colonne doit correspondre à la clé dans le JSON
+    # que vous envoyez depuis le client.
+    api_key = Column(String, ForeignKey("devices.api_key"), index=True)
+    
+    action_taken = Column(String, nullable=False)
+    source_ip_blocked = Column(String)
+    attack_type_prevented = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+
 # ------------------------------------------------------------
 # SECTION 5: Pydantic models (schemas)
 # ------------------------------------------------------------
@@ -387,7 +437,7 @@ class DevicePublic(BaseModel):
     id: int
     name: str
     api_key: str
-    registration_token: str  # <-- Ajouté
+    registration_token: Optional[str] = None
 
     prevention_enabled: bool
     description: Optional[str] = None
@@ -433,7 +483,11 @@ class AnalysisHistoryPublic(BaseModel):
     class Config: from_attributes = True
 
 class VerificationData(BaseModel):email:EmailStr;code:str
-class AttackReport(BaseModel):source_ip:str;attack_type:str;confidence:float
+class AttackReport(BaseModel):
+    source_ip:str
+    attack_type:str
+    confidence:float
+    api_key: str
 class AttackLogPublic(BaseModel):id:int;timestamp:datetime;source_ip:str;attack_type:str;confidence:float;city:Optional[str]=None;country:Optional[str]=None;model_config=ConfigDict(from_attributes=True)
 class ClientModel(BaseModel):
     id:int
@@ -445,7 +499,7 @@ class ClientModel(BaseModel):
     owner_username: Optional[str] = None
     owner_email: Optional[str] = None
     model_config=ConfigDict(from_attributes=True)
-
+   
 class AdminStats(BaseModel):total_users:int;premium_users:int;total_devices:int;online_devices:int;total_attacks_24h:int
 
 class FLRoundHistory(BaseModel):
@@ -468,7 +522,7 @@ class HistoryModel(BaseModel):
     class Config:
         from_attributes = True
 
-class FLStatus(BaseModel): server_round: int; accuracy: float
+class FLStatus(BaseModel): server_round: int; accuracy: float ;  loss: float
 class ClientHistoryPayload(BaseModel):
     client_flower_id: str; server_round: int; accuracy: float; loss: float
 
@@ -554,10 +608,27 @@ class TicketCategoryStat(BaseModel):
     count: int
 
 
+class AttackTypeStat(BaseModel):
+    attack_type: str
+    count: int
+
+class PreventionLogCreate(BaseModel):
+    api_key: str
+    action_taken: str
+    source_ip_blocked: str
+    attack_type_prevented: str
+class PreventionLogPublic(BaseModel):
+    action_taken: str
+    timestamp: datetime
+    class Config: from_attributes = True
 
 
-
-
+class DeviceUpdate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    ip_address: Optional[str] = None
+    mac_address: Optional[str] = None
+    category_id: Optional[int] = None
 # ------------------------------------------------------------
 # SECTION 6: Helpers (auth, utils)
 # ------------------------------------------------------------
@@ -612,13 +683,33 @@ async def get_current_admin_user(user: User = Depends(get_current_user)):
 def enrich_geoip(ip: str):
     if not geoip_reader:
         return None, None, None, None
+    
+    if not ip or ip.startswith(("192.168", "10.", "127.")):
+        return None, None, None, None
+        
     try:
         response = geoip_reader.city(ip)
-        lat = response.location.latitude
-        lon = response.location.longitude
-        city = response.city.name
         country = response.country.name
+        
+        # === LA CORRECTION EST ICI ===
+        # On essaie de prendre les coordonnées de la ville en premier
+        if response.location.latitude and response.location.longitude:
+            lat = response.location.latitude
+            lon = response.location.longitude
+            city = response.city.name
+        # Si la ville n'a pas de coordonnées, on prend celles du pays
+        elif response.country.location.latitude and response.country.location.longitude:
+            lat = response.country.location.latitude
+            lon = response.country.location.longitude
+            city = None # On indique explicitement qu'on n'a pas de ville
+        else:
+            # Si on n'a aucune coordonnée, on abandonne
+            return None, None, country, None
+            
         return lat, lon, city, country
+        
+    except geoip2.errors.AddressNotFoundError:
+        return None, None, None, None
     except Exception:
         return None, None, None, None
 
@@ -1024,22 +1115,95 @@ def create_category(category_data: DeviceCategoryCreate, current_user: User = De
     db.refresh(new_category)
     return new_category
 
+@app.put("/api/devices/{device_id}", response_model=DevicePublic, dependencies=[Depends(get_current_user)])
+def update_device(
+    device_id: int,
+    device_data: DeviceUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Met à jour les informations d'un appareil appartenant à l'utilisateur.
+    """
+    # 1. On cherche l'appareil en s'assurant qu'il appartient bien à l'utilisateur
+    db_device = db.query(Device).filter(
+        Device.id == device_id,
+        Device.owner_id == current_user.id
+    ).first()
 
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found or not owned by user.")
+
+    # 2. On vérifie si le nouveau nom n'est pas déjà pris par un AUTRE appareil
+    if device_data.name != db_device.name:
+        existing_device = db.query(Device).filter(
+            Device.name == device_data.name,
+            Device.owner_id == current_user.id
+        ).first()
+        if existing_device:
+            raise HTTPException(status_code=400, detail=f"A device with the name '{device_data.name}' already exists.")
+
+    # 3. On met à jour les champs de l'objet
+    update_data = device_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_device, key, value)
+    
+    db.commit()
+    db.refresh(db_device)
+    
+    return db_device
 
 
 # Dashboard / attacks
+# Dans backend/main.py
+
 @app.get("/api/dashboard/stats", response_model=DashboardStats)
 def get_user_dashboard_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Renvoie les statistiques UNIQUEMENT pour les appareils de l'utilisateur connecté.
+    """
+    # 1. Obtenir la liste des clés API de l'utilisateur
+    user_device_keys = [d.api_key for d in current_user.devices]
+    
+    # Si l'utilisateur n'a pas d'appareils, on renvoie des stats vides
+    if not user_device_keys:
+        return DashboardStats(device_count=0, attacks_this_week=0, last_attack_timestamp=None)
+
+    # 2. Filtrer les requêtes de statistiques par ces clés
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    attacks = db.query(AttackLog).filter(AttackLog.timestamp >= seven_days_ago).count()
-    last = db.query(AttackLog).order_by(AttackLog.timestamp.desc()).first()
-    return DashboardStats(device_count=len(current_user.devices), attacks_this_week=attacks, last_attack_timestamp=last.timestamp if last else None)
+    
+    attacks_count = db.query(AttackLog).filter(
+        AttackLog.device_api_key.in_(user_device_keys),
+        AttackLog.timestamp >= seven_days_ago
+    ).count()
+    
+    last_attack = db.query(AttackLog).filter(
+        AttackLog.device_api_key.in_(user_device_keys)
+    ).order_by(AttackLog.timestamp.desc()).first()
 
-
+    return DashboardStats(
+        device_count=len(user_device_keys),
+        attacks_this_week=attacks_count,
+        last_attack_timestamp=last_attack.timestamp if last_attack else None
+    )
 @app.get("/api/attacks/history", response_model=List[AttackLogPublic])
-def get_attack_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(AttackLog).order_by(AttackLog.timestamp.desc()).limit(50).all()
+def get_attack_history(
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """
+    Renvoie l'historique des attaques DÉTECTÉES PAR LES APPAREILS DE L'UTILISATEUR.
+    """
+    # 1. Obtenir la liste des clés API de l'utilisateur
+    user_device_keys = [d.api_key for d in current_user.devices]
+    
+    if not user_device_keys:
+        return [] # Si l'utilisateur n'a pas d'appareils, il n'a pas d'historique
 
+    # 2. Filtrer les logs d'attaques par ces clés
+    return db.query(AttackLog).filter(
+        AttackLog.device_api_key.in_(user_device_keys)
+    ).order_by(AttackLog.timestamp.desc()).limit(50).all()
 
 @app.post("/api/attacks/report", response_model=AttackLogPublic)
 async def report_attack(report: AttackReport, db: Session = Depends(get_db)):
@@ -1048,6 +1212,7 @@ async def report_attack(report: AttackReport, db: Session = Depends(get_db)):
         source_ip=report.source_ip,
         attack_type=report.attack_type,
         confidence=report.confidence,
+        device_api_key=report.api_key,
         latitude=lat,
         longitude=lon,
         city=city,
@@ -1060,11 +1225,14 @@ async def report_attack(report: AttackReport, db: Session = Depends(get_db)):
     await send_ntfy_notification(new_log)
     return new_log
 
+# Dans main.py
 
 @app.post("/api/fl_update")
 async def fl_update(status: FLStatus):
-    print(f"Received FL update: Round {status.server_round}, Accuracy {status.accuracy:.4f}")
+    print(f"➡️  [WebSocket] Received FL update: {status.model_dump_json()}")
+    print(f"   -> Broadcasting to {len(manager.channels.get('fl_status', []))} connected clients...")
     await manager.broadcast(status.model_dump_json(), "fl_status")
+    print("   -> ✅ Broadcast complete.")
     return {"status": "broadcasted"}
 
 
@@ -1076,29 +1244,55 @@ def get_dashboard(current_user: User = Depends(get_current_admin_user), db: Sess
     last = db.query(AttackLog).order_by(AttackLog.timestamp.desc()).first()
     return DashboardStats(device_count=count, attacks_this_week=attacks, last_attack_timestamp=last.timestamp if last else None)
 
+# Dans backend/main.py
 
+from sqlalchemy import func # Assurez-vous d'avoir cet import
+
+# On peut réutiliser le Pydantic Model `ClientModel`
+
+# === LE NOUVEL ENDPOINT EST ICI ===
+@app.get("/api/admin/clients/top-performing", response_model=List[ClientModel], dependencies=[Depends(get_current_admin_user)])
+def get_top_performing_clients(db: Session = Depends(get_db)):
+    """
+    Calcule et renvoie les 3 clients avec la meilleure accuracy moyenne.
+    """
+    # C'est une requête SQL complexe traduite en SQLAlchemy :
+    # 1. On joint les tables Client et ClientHistory.
+    # 2. On groupe les résultats par client.
+    # 3. On calcule l'accuracy moyenne pour chaque client.
+    # 4. On ordonne les résultats par cette moyenne, en ordre décroissant.
+    # 5. On ne prend que les 3 premiers.
+    top_clients_query = db.query(
+        Client,
+        func.avg(ClientHistory.accuracy).label('avg_accuracy')
+    ).join(Client.history_records).group_by(Client.id).order_by(
+        func.avg(ClientHistory.accuracy).desc()
+    ).limit(3).all()
+
+    # La requête renvoie une liste de tuples (Client, avg_accuracy).
+    # On ne veut renvoyer que les objets Client.
+    top_clients = [client for client, avg_accuracy in top_clients_query]
+    
+    return top_clients
 @app.get("/api/admin/clients", response_model=List[ClientAdminView], dependencies=[Depends(get_current_admin_user)])
 def get_admin_clients(db: Session = Depends(get_db)):
-    clients = db.query(Client).all()
+    """
+    Récupère tous les clients FL et pré-charge les informations de leur propriétaire.
+    """
+    # === LA CORRECTION EST ICI ===
+    # On fait une seule requête qui récupère les clients ET leurs propriétaires
+    clients = db.query(Client).options(selectinload(Client.owner)).all()
+    
     response = []
     for client in clients:
-        user = db.query(User).filter(User.google_id == client.flower_id).first()
-        
-        # On utilise maintenant le bon modèle de réponse
-        client_data = ClientAdminView(
-            id=client.id,
-            flower_id=client.flower_id,
-            name=client.name,
-            status=client.status,
-            notes=client.notes,
-            registered_at=client.registered_at,
-            owner_username=user.username if user else "N/A",
-            owner_email=user.email if user else "N/A"
-        )
+        # On utilise la validation Pydantic pour construire la réponse
+        client_data = ClientAdminView.model_validate(client)
+        if client.owner:
+            client_data.owner_username = client.owner.username
+            client_data.owner_email = client.owner.email
         response.append(client_data)
         
     return response
-
 @app.get("/api/admin/clients/{client_id}/history", response_model=List[HistoryModel], dependencies=[Depends(get_current_admin_user)])
 def get_client_history(client_id: int, db: Session = Depends(get_db)):
     history = db.query(ClientHistory).filter(ClientHistory.client_id == client_id).order_by(ClientHistory.server_round.asc()).all()
@@ -1367,6 +1561,7 @@ def get_user_devices_for_admin(user_id: int, db: Session = Depends(get_db)):
     return response
 
 
+FLOWER_PROCESS = None
 
 @app.post("/api/admin/training/start", response_model=TrainingStatus, dependencies=[Depends(get_current_admin_user)])
 def start_training():
@@ -1383,10 +1578,12 @@ def start_training():
     
     # On utilise sys.executable pour être sûr d'utiliser le même interpréteur Python
     # que celui qui exécute uvicorn (celui du venv)
-    command = [sys.executable, "server.py"]
+    command = [sys.executable, "server.py", "--num-clients", "1"]
     
-    # Lancer le processus
-    FLOWER_PROCESS = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # === LA CORRECTION EST ICI ===
+    # On ne redirige plus stdout/stderr, on les laisse s'afficher
+    # dans la console parente (celle de uvicorn).
+    FLOWER_PROCESS = subprocess.Popen(command)
     
     print(f"✅ Flower server process started with PID: {FLOWER_PROCESS.pid}")
     
@@ -1462,17 +1659,36 @@ async def register(user_in: UserCreate, background_tasks: BackgroundTasks, db: S
 
     return UserPublic.model_validate(user)
 
+@app.get("/api/admin/attacks/stats-by-type", response_model=List[AttackTypeStat], dependencies=[Depends(get_current_admin_user)])
+def get_attack_stats_by_type(db: Session = Depends(get_db)):
+    stats = db.query(
+        AttackLog.attack_type,
+        func.count(AttackLog.id).label("count")
+    ).group_by(AttackLog.attack_type).order_by(func.count(AttackLog.id).desc()).all()
+    return stats
 # Flower registration
+# Dans main.py
+
 @app.post("/api/fl/register")
 def fl_register(payload: FLClientRegistration, db: Session = Depends(get_db)):
     device = db.query(Device).filter_by(api_key=payload.api_key).first()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-    if device.owner:
-        device.owner.google_id = payload.flower_cid
-        db.commit()
-    return {"status": "registered"}
+    if not device or not device.owner:
+        raise HTTPException(status_code=404, detail="Device or owner not found for the given API key.")
 
+    client = db.query(Client).filter_by(flower_id=payload.flower_cid).first()
+    if not client:
+        client = Client(
+            flower_id=payload.flower_cid,
+            name=device.name,
+            owner_id=device.owner.id
+        )
+        db.add(client)
+    else:
+        client.owner_id = device.owner.id
+        client.name = device.name
+    
+    db.commit()
+    return {"status": "registered"}
 
 # Sequence helper for evaluation
 def create_sequences_for_evaluation(X, y, time_steps=20):
@@ -1980,7 +2196,30 @@ async def get_chatbot_stats(db: Session = Depends(get_db)):
         # Fallback to raw stats
         stats = db.query(ChatLog.question, func.count(ChatLog.question).label('count')).group_by(ChatLog.question).order_by(func.count(ChatLog.question).desc()).limit(10).all()
         return stats
-# ------------------------------------------------------------
+    
+
+@app.post("/api/devices/log-prevention", status_code=201)
+def log_prevention_action(log_data: PreventionLogCreate, db: Session = Depends(get_db)):
+    # On vérifie que l'api_key est valide
+    device = db.query(Device).filter_by(api_key=log_data.api_key).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    
+    new_log = PreventionLog(**log_data.model_dump())
+    db.add(new_log)
+    db.commit()
+    return {"status": "log recorded"}
+
+
+
+@app.get("/api/devices/{device_id}/prevention-logs", response_model=List[PreventionLogPublic])
+def get_prevention_logs(device_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # On vérifie que l'utilisateur est bien le propriétaire de l'appareil
+    device = db.query(Device).filter(Device.id == device_id, Device.owner_id == current_user.id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found.")
+        
+    return db.query(PreventionLog).filter(PreventionLog.api_key == device.api_key).order_by(PreventionLog.timestamp.desc()).limit(5).all()# ------------------------------------------------------------
 # WebSockets routes
 # ------------------------------------------------------------
 @app.websocket("/ws/attacks")

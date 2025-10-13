@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/apiClient';
 import NewDeviceForm from '../components/NewDeviceForm';
+import PreventionLog from '../components/PreventionLog'; // <<< NOUVEL IMPORT
 
 // --- Icons ---
 const CopyIcon = () => (
@@ -188,136 +189,215 @@ export default function UserDevices() {
     navigator.clipboard.writeText(text).then(() => alert("Command copied!"));
   };
 
-  return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-text-primary">Manage Your Devices</h1>
+ return (
+  <div className="space-y-8">
+    <h1 className="text-3xl font-bold text-text-primary">Manage Your Devices</h1>
 
-      {generatedRegToken && (
-        <div className="p-4 bg-blue-100 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded-r-lg shadow-lg">
-          <h4 className="font-bold text-blue-800 dark:text-blue-300">Device Registration Initiated!</h4>
-          <p className="text-sm my-2 text-blue-700 dark:text-blue-400">Run the following command on your new IIoT device's terminal:</p>
-          <div className="flex items-center justify-between gap-4 bg-gray-800 text-white p-3 rounded-md">
-            <pre className="font-mono text-sm overflow-x-auto">{installCommand}</pre>
-            <button onClick={() => copyToClipboard(installCommand)} className="p-2 rounded hover:bg-gray-600"><CopyIcon /></button>
-          </div>
-          <button onClick={() => setGeneratedRegToken(null)} className="mt-3 text-xs font-semibold text-text-secondary hover:underline">Dismiss</button>
+    {generatedRegToken && (
+      <div className="p-4 bg-blue-100 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded-r-lg shadow-lg">
+        <h4 className="font-bold text-blue-800 dark:text-blue-300">Device Registration Initiated!</h4>
+        <p className="text-sm my-2 text-blue-700 dark:text-blue-400">
+          Run the following command on your new IIoT device's terminal:
+        </p>
+        <div className="flex items-center justify-between gap-4 bg-gray-800 text-white p-3 rounded-md">
+          <pre className="font-mono text-sm overflow-x-auto">{installCommand}</pre>
+          <button onClick={() => copyToClipboard(installCommand)} className="p-2 rounded hover:bg-gray-600">
+            <CopyIcon />
+          </button>
         </div>
-      )}
-
-      <div className="bg-bg-primary p-6 rounded-lg shadow-md">
-        <h3 className="text-xl font-semibold mb-4 text-text-primary">Register a New IIoT Device</h3>
-        {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-        <NewDeviceForm onRegister={handleRegisterDevice} isLoading={isSubmitting} />
+        <button
+          onClick={() => setGeneratedRegToken(null)}
+          className="mt-3 text-xs font-semibold text-text-secondary hover:underline"
+        >
+          Dismiss
+        </button>
       </div>
+    )}
 
-      <div className="bg-bg-primary p-6 rounded-lg shadow-md">
-        <h3 className="text-xl font-semibold mb-4 text-text-primary">Your Registered Devices</h3>
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-6 p-4 mb-4 border-b border-gray-200 dark:border-gray-700">
-    <div className="flex items-center gap-2">
-        <label className="font-semibold text-sm text-text-secondary">Filter by Category:</label>
-        <select 
-            onChange={e => setCategoryFilter(e.target.value)} 
-            value={categoryFilter} 
-            className="p-1 border border-gray-300 dark:border-gray-600 bg-bg-primary text-text-primary rounded-md text-sm"
-        >
-            <option value="all">All Categories</option>
-            {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-        </select>
+    <div className="bg-bg-primary p-6 rounded-lg shadow-md">
+      <h3 className="text-xl font-semibold mb-4 text-text-primary">Register a New IIoT Device</h3>
+      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+      <NewDeviceForm onRegister={handleRegisterDevice} isLoading={isSubmitting} />
     </div>
-    <div className="flex items-center gap-2">
-        <label className="font-semibold text-sm text-text-secondary">Filter by Status:</label>
-        <select 
-            onChange={e => setStatusFilter(e.target.value)} 
-            value={statusFilter} 
+
+    <div className="bg-bg-primary p-6 rounded-lg shadow-md">
+      <h3 className="text-xl font-semibold mb-4 text-text-primary">Your Registered Devices</h3>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-6 p-4 mb-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2">
+          <label className="font-semibold text-sm text-text-secondary">Filter by Category:</label>
+          <select
+            onChange={e => setCategoryFilter(e.target.value)}
+            value={categoryFilter}
             className="p-1 border border-gray-300 dark:border-gray-600 bg-bg-primary text-text-primary rounded-md text-sm"
-        >
+          >
+            <option value="all">All Categories</option>
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="font-semibold text-sm text-text-secondary">Filter by Status:</label>
+          <select
+            onChange={e => setStatusFilter(e.target.value)}
+            value={statusFilter}
+            className="p-1 border border-gray-300 dark:border-gray-600 bg-bg-primary text-text-primary rounded-md text-sm"
+          >
             <option value="all">All</option>
             <option value="online">Online</option>
             <option value="offline">Offline</option>
-        </select>
-    </div>
+          </select>
         </div>
+      </div>
 
-        {isLoading && <p className="text-text-secondary">Loading your devices...</p>}
-        {!isLoading && filteredDevices.length === 0 && <p className="text-text-secondary py-4">No devices match the current filters.</p>}
+      {isLoading && <p className="text-text-secondary">Loading your devices...</p>}
 
-        {filteredDevices.length > 0 && (
-    <div className="space-y-6">
-        {filteredDevices.map(device => (
-            <div key={device.id} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-bg-primary">
-                <div className="flex justify-between items-start">
-                    <div className="flex-grow">
-                        {editingId === device.id ? (
-                            // --- Formulaire d'Édition Thématique ---
-                            <div className="space-y-2">
-                                <input 
-                                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded" 
-                                    value={editData.name} 
-                                    onChange={e => setEditData({ ...editData, name: e.target.value })} 
-                                />
-                                <input 
-                                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded" 
-                                    placeholder="IP Address" 
-                                    value={editData.ip_address} 
-                                    onChange={e => setEditData({ ...editData, ip_address: e.target.value })} 
-                                />
-                                <input 
-                                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded" 
-                                    placeholder="MAC Address" 
-                                    value={editData.mac_address} 
-                                    onChange={e => setEditData({ ...editData, mac_address: e.target.value })} 
-                                />
-                                <textarea 
-                                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded" 
-                                    placeholder="Description" 
-                                    value={editData.description} 
-                                    onChange={e => setEditData({ ...editData, description: e.target.value })} 
-                                />
-                                <div className="flex gap-2 pt-2">
-                                    <button 
-                                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-semibold" 
-                                        onClick={() => handleSave(device.id)}
-                                    >
-                                        Save
-                                    </button>
-                                    <button 
-                                        className="bg-bg-secondary hover:bg-gray-300 dark:hover:bg-gray-600 text-text-primary px-3 py-1 rounded text-sm font-semibold" 
-                                        onClick={handleCancel}
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                      <>
-                        <p className="font-bold text-lg text-text-primary">{device.name}</p>
-                        <p className="text-xs text-text-secondary font-mono mt-1">API Key: <code>{device.api_key}</code></p>
-                        {device.category_id && <p className="text-xs text-text-secondary">Category: {device.category_id}</p>}
-                        {device.created_at && <p className="text-xs text-text-secondary">Created: {new Date(device.created_at).toLocaleString()}</p>}
-                        {device.description && <p className="text-sm text-text-secondary mt-2">{device.description}</p>}
-                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-text-secondary font-mono">
-                          {device.ip_address && <p>IP: {device.ip_address}</p>}
-                          {device.mac_address && <p>MAC: {device.mac_address}</p>}
-                        </div>
-                      </>
-                    )}
-                  </div>
+      {!isLoading && filteredDevices.length === 0 && (
+        <p className="text-text-secondary py-4">No devices match the current filters.</p>
+      )}
 
-                  <div className="flex items-center gap-4">
-                    <StatusIndicator status={device.status_info?.status || 'offline'} />
-                    {editingId === device.id ? null : <button className="text-blue-500" onClick={() => handleEdit(device)}>Edit</button>}
-                    <button onClick={() => handleDeleteDevice(device.id)} className="text-text-secondary hover:text-red-500 p-1" title="Delete Device"><TrashIcon /></button>
+      {filteredDevices.length > 0 ? (
+        <div className="space-y-6">
+          {filteredDevices.map(device => (
+            <div
+              key={device.id}
+              className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-bg-primary"
+            >
+              {/* --- Mode Édition --- */}
+              {editingId === device.id ? (
+                <div className="space-y-2">
+                  <h4 className="font-bold text-lg text-text-primary mb-2">
+                    Editing: {device.name}
+                  </h4>
+
+                  <input
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded"
+                    value={editData.name}
+                    onChange={e =>
+                      setEditData({ ...editData, name: e.target.value })
+                    }
+                    placeholder="Device Name"
+                  />
+
+                  <input
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded"
+                    value={editData.ip_address}
+                    onChange={e =>
+                      setEditData({ ...editData, ip_address: e.target.value })
+                    }
+                    placeholder="IP Address"
+                  />
+
+                  <input
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded"
+                    value={editData.mac_address}
+                    onChange={e =>
+                      setEditData({ ...editData, mac_address: e.target.value })
+                    }
+                    placeholder="MAC Address"
+                  />
+
+                  <textarea
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 bg-bg-secondary text-text-primary rounded"
+                    value={editData.description}
+                    onChange={e =>
+                      setEditData({ ...editData, description: e.target.value })
+                    }
+                    placeholder="Description"
+                  />
+
+                  <PreventionPanel device={device} />
+                  <PreventionLog deviceId={device.id} />
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-semibold"
+                      onClick={() => handleSave(device.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="bg-bg-secondary hover:bg-gray-300 dark:hover:bg-gray-600 text-text-primary px-3 py-1 rounded text-sm font-semibold"
+                      onClick={handleCancel}
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
+              ) : (
+                <>
+                  {/* --- Vue normale --- */}
+                  <div className="flex justify-between items-start">
+                    <div className="flex-grow">
+                      <div className="flex items-center gap-3">
+                        <p className="font-bold text-lg text-text-primary">
+                          {device.name}
+                        </p>
+                        {device.category && (
+                          <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
+                            {device.category.name}
+                          </span>
+                        )}
+                      </div>
 
-                <PreventionPanel device={device} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                      {device.description && (
+                        <p className="text-sm text-text-secondary mt-1">
+                          {device.description}
+                        </p>
+                      )}
+
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 text-xs font-mono text-text-secondary">
+                        <p>
+                          API Key: <code>{device.api_key.substring(0, 8)}...</code>
+                        </p>
+                        <button 
+                        onClick={() => navigator.clipboard.writeText(device.api_key).then(() => alert('Full API Key copied to clipboard!'))}
+                        className="p-1 text-text-secondary hover:text-accent"
+                        title="Copy full API Key"
+                    >
+                        {/* On réutilise l'icône de copie */}
+                        <CopyIcon />
+                    </button>
+                        {device.ip_address && <p>IP: {device.ip_address}</p>}
+                        {device.mac_address && <p>MAC: {device.mac_address}</p>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <StatusIndicator
+                        status={device.status_info?.status || "offline"}
+                      />
+                      <button
+                        className="font-semibold text-blue-600 hover:underline text-sm"
+                        onClick={() => handleEdit(device)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDevice(device.id)}
+                        className="text-text-secondary hover:text-red-500 p-1"
+                        title="Delete Device"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </div>
+
+                  <PreventionPanel device={device} />
+                  <PreventionLog deviceId={device.id} />
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
-  );
+  </div>
+);
+
 }

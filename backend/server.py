@@ -56,7 +56,7 @@ class FedIdsStrategy(fl.server.strategy.FedAvg):
             # === BLOC DE COMMUNICATION AMÉLIORÉ ===
             try:
                 # On envoie la mise à jour pour le graphique en temps réel
-                requests.post(f"{API_URL}/api/fl_update", json={"server_round": server_round, "accuracy": accuracy}, timeout=5)
+                requests.post(f"{API_URL}/api/fl_update", json={"server_round": server_round, "accuracy": accuracy,"loss": aggregated_loss}, timeout=5)
                 print("   -> ✅ Successfully notified dashboard of global status.")
             except requests.exceptions.RequestException as e:
                 print(f"   -> ❌ FAILED to notify dashboard. Is uvicorn running? Error: {e}")

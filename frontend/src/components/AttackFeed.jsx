@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useChatbot } from '../context/ChatbotContext'; // <<< NOUVEL IMPORT
+
 // Icône simple pour le chatbot
 const ChatIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -13,6 +15,7 @@ const ChatIcon = () => (
 // Ce composant reçoit les données 'attacks' et 'status' via ses props. Il est "stupide".
 export default function AttackFeed({ attacks, status, onAdviceClick }) {
         const { theme } = useTheme(); 
+        const { requestAdvice } = useChatbot(); 
 
     const statusColors = {
         'dark': {
@@ -32,7 +35,7 @@ export default function AttackFeed({ attacks, status, onAdviceClick }) {
         // Le conteneur principal utilise les couleurs du thème
         <div className="bg-bg-primary p-4 rounded-lg shadow-md h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-text-primary">Real-time Detection Feed</h3>
+                <h3 className="font-semibold text-text-primary"></h3>
                 <span className={`text-xs font-bold capitalize ${statusColor}`}>{status}</span>
             </div>
             
@@ -48,7 +51,10 @@ export default function AttackFeed({ attacks, status, onAdviceClick }) {
                     // Mapper les attaques si le tableau n'est pas vide
                     attacks.map((attack, index) => (
                         <div key={attack.id || index} className="p-3 bg-bg-secondary border-l-4 border-red-500 rounded-md">
-                            <div className="flex justify-between items-start gap-4">
+                            {/* === LA CORRECTION EST ICI === */}
+                            <div className="flex justify-between items-center gap-4">
+                                
+                                {/* Section de gauche avec les infos */}
                                 <div>
                                     <p className="font-bold text-red-500">{attack.attack_type}</p>
                                     <p className="text-sm text-text-secondary mt-1">
@@ -60,9 +66,11 @@ export default function AttackFeed({ attacks, status, onAdviceClick }) {
                                         </p>
                                     }
                                 </div>
-                                <button
-                                    onClick={() => onAdviceClick(`Tell me more about this ${attack.attack_type} attack from ${attack.source_ip}`)}
-                                    className="flex items-center flex-shrink-0 gap-1.5 bg-bg-tertiary text-xs text-text-secondary font-semibold px-2 py-1 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+                                
+                                {/* Section de droite avec le bouton */}
+                                <button 
+                                    onClick={() => requestAdvice(attack)}
+                                    className="flex-shrink-0 flex items-center gap-2 text-xs font-bold text-accent hover:underline"
                                 >
                                     <ChatIcon />
                                     Get Advice

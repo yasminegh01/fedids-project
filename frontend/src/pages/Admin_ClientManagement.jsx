@@ -1,16 +1,18 @@
+// frontend/src/pages/Admin_ClientManagement.jsx
+
 import React, { useState, useEffect, useCallback } from 'react';
 import apiClient from '../api/apiClient';
-import { Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
-import { useTheme } from '../context/ThemeContext'; // <<< IMPORTER LE HOOK DE THÈME
+import { Line, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
+import { useTheme } from '../context/ThemeContext';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, ArcElement);
 
 // --- Sous-composant : Modale d'Historique avec Graphique ---
 const HistoryModal = ({ client, closeModal }) => {
     const [history, setHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const { theme } = useTheme(); // <<< RÉCUPÉRER LE THÈME ACTUEL
+    const { theme } = useTheme();
 
     useEffect(() => {
         if (client) {
@@ -91,28 +93,80 @@ const StatusBadge = ({ status }) => {
     return <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${styles[status] || 'bg-gray-100'}`}>{status}</span>;
 };
 
-
 // --- Composant Principal de la Page ---
 export default function AdminClientManagement() {
     const [clients, setClients] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedClient, setSelectedClient] = useState(null);
-const fetchClients = useCallback(() => {
-    setIsLoading(true);
-    apiClient.get('/api/admin/clients')
-        .then(res => setClients(res.data))
-        .catch(err => console.error("Failed to fetch clients", err))
-        .finally(() => setIsLoading(false));
-}, []);
+    const [attackStats, setAttackStats] = useState(null);
+    const [topClients, setTopClients] = useState([]);
 
-useEffect(() => { fetchClients(); }, [fetchClients]);
+    // Récupération des clients
+    const fetchClients = useCallback(() => {
+        setIsLoading(true);
+        apiClient.get('/api/admin/clients')
+            .then(res => setClients(res.data))
+            .catch(err => console.error("Failed to fetch clients", err))
+            .finally(() => setIsLoading(false));
+    }, []);
+
+    // Récupération des stats d’attaques
+    const fetchAttackStats = useCallback(() => {
+        apiClient.get('/api/admin/attacks/stats-by-type')
+            .then(res => {
+                setAttackStats({
+                    labels: res.data.map(d => d.attack_type),
+                    datasets: [{
+                        data: res.data.map(d => d.count),
+                        backgroundColor: ['#A5B4FC', '#FCA5A5', '#FCD34D', '#6EE7B7', '#93C5FD', '#F9A8D4']
+                    }]
+                });
+            })
+            .catch(err => console.error("Failed to fetch attack stats", err));
+    }, []);
+
+    // Récupération des meilleurs clients
+    const fetchTopClients = useCallback(() => {
+        apiClient.get('/api/admin/clients/top-performing')
+            .then(res => setTopClients(res.data))
+            .catch(err => console.error("Failed to fetch top clients", err));
+    }, []);
+
+    useEffect(() => {
+        fetchClients();
+        fetchAttackStats();
+        fetchTopClients();
+    }, [fetchClients, fetchAttackStats, fetchTopClients]);
+
     return (
         <div className="space-y-6">
             {selectedClient && <HistoryModal client={selectedClient} closeModal={() => setSelectedClient(null)} />}
 
-            <h1 className="text-3xl font-bold text-text-primary">FL Client Management</h1>
-            <p className="text-text-secondary mt-1">View the status and performance of each client in the federated network.</p>
-            
+            <h1 className="text-3xl font-bold text-text-primary">FL Client & Attack Analysis</h1>
+            <p className="text-text-secondary mt-1">View client performance and analyze attack distributions.</p>
+
+            {/* === SECTION DE STATISTIQUES === */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-bg-primary p-6 rounded-lg shadow-md">
+                    <h3 className="text-xl font-semibold">Attack Distribution</h3>
+                    <div className="max-w-sm mx-auto mt-4">
+                        {attackStats ? <Pie data={attackStats} /> : <p>Loading stats...</p>}
+                    </div>
+                </div>
+                <div className="bg-bg-primary p-6 rounded-lg shadow-md">
+                    <h3 className="text-xl font-semibold">Top Performing Clients</h3>
+                    <ul className="mt-4 space-y-2">
+                        {topClients.length > 0 ? topClients.map((c, i) => (
+                            <li key={c.id} className="flex justify-between p-2 bg-bg-secondary rounded-md">
+                                <span className="font-semibold text-text-primary">{i + 1}. {c.name}</span>
+                                <span className="text-text-secondary">{(c.avg_accuracy * 100).toFixed(1)}%</span>
+                            </li>
+                        )) : <p className="text-text-secondary">Loading top clients...</p>}
+                    </ul>
+                </div>
+            </div>
+
+            {/* === TABLEAU DES CLIENTS === */}
             <div className="bg-bg-primary rounded-lg shadow-md overflow-hidden">
                 <div className="overflow-x-auto">
                     {isLoading ? <p className="p-8 text-center text-text-secondary">Loading clients...</p> : (

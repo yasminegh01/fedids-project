@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext'; 
 import App from './App.jsx';
 import './index.css';
+import { ChatbotProvider } from './context/ChatbotContext'; // <<< NOUVEL IMPORT
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -15,7 +16,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthProvider>
         {/* 3. L'App ne contient plus que les Routes */}
         <ThemeProvider> {/* <<< ON ENVELOPPE L'APP */}
-          <App />
+           <ChatbotProvider>
+            <App />
+          </ChatbotProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
